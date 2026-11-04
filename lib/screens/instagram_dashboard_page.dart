@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../backend/instagram_service.dart';
+import '../config/app_config.dart';
 import '../sections/navigation_bar.dart' show Wordmark;
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -84,8 +86,9 @@ class _InstagramDashboardPageState extends State<InstagramDashboardPage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _showReturnNotice() {
-    final notice = widget.returnNotice;
+  void _showReturnNotice() => _showNotice(widget.returnNotice);
+
+  void _showNotice(({String result, String? reason})? notice) {
     if (notice == null || !mounted) return;
     if (notice.result == 'connected') {
       _toast('Instagram connected. Your first sync takes a minute or two.');
@@ -110,15 +113,39 @@ class _InstagramDashboardPageState extends State<InstagramDashboardPage> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final url = await _service.startConnect(
-        // On web, come back to this site; the server checks it is allowed.
-        returnTo: kIsWeb ? '${Uri.base.origin}${Uri.base.path}' : null,
-      );
-      final opened = await openExternalUrl(url, sameTab: kIsWeb);
-      if (!opened && mounted) _toast('Could not open Instagram.');
-      if (!kIsWeb && mounted) {
-        _toast('Finish connecting in your browser, then tap Refresh.');
+      if (kIsWeb) {
+        // The website leaves for Instagram and comes back to this page.
+        final url = await _service.startConnect(
+          returnTo: '${Uri.base.origin}${Uri.base.path}',
+        );
+        final opened = await openExternalUrl(url, sameTab: true);
+        if (!opened && mounted) _toast('Could not open Instagram.');
+        return;
       }
+      // Phones: Instagram's login runs in the system sign-in sheet inside
+      // the app, then returns to shor://instagram.
+      final url = await _service.startConnect(
+        returnTo: '${AppConfig.appScheme}://instagram',
+      );
+      final String result;
+      try {
+        result = await authenticateInApp(url, AppConfig.appScheme);
+      } on PlatformException catch (e) {
+        if (mounted) {
+          _toast(
+            e.code == 'CANCELED'
+                ? 'Instagram connection cancelled.'
+                : 'Could not open Instagram. Please try again.',
+          );
+        }
+        return;
+      }
+      final params = Uri.parse(result).queryParameters;
+      _showNotice((
+        result: params['instagram'] ?? 'error',
+        reason: params['reason'],
+      ));
+      if (params['instagram'] == 'connected') await _load();
     } on InstagramFailure catch (e) {
       if (mounted) _toast(e.message);
     } finally {

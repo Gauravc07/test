@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:shor/backend/auth_service.dart';
+import 'package:shor/config/app_config.dart';
 import 'package:shor/backend/instagram_service.dart';
 import 'package:shor/backend/marketplace_service.dart';
 
@@ -9,16 +10,57 @@ const creatorId = 'creator-1';
 const otherCreatorId = 'creator-2';
 
 class FakeAuth implements AuthService {
-  FakeAuth(this.account);
+  FakeAuth(this.account, {this.signedOut = false});
 
-  final Account account;
-  bool signedOut = false;
+  Account account;
+  bool signedOut;
+  bool deleted = false;
+  String? resetEmail;
+  String? newPassword;
+  final _sessions = StreamController<bool>.broadcast();
 
   @override
   bool get isSignedIn => !signedOut;
 
   @override
+  Stream<bool> get sessionChanges => _sessions.stream;
+
+  @override
+  Stream<void> get passwordRecovery => const Stream.empty();
+
+  /// Simulates logging in from elsewhere (e.g. the welcome screen).
+  void signInNow() {
+    signedOut = false;
+    _sessions.add(true);
+  }
+
+  @override
   Future<Account> loadAccount() async => account;
+
+  @override
+  Future<void> acceptTerms() async {
+    account = Account(
+      id: account.id,
+      email: account.email,
+      role: account.role,
+      fullName: account.fullName,
+      companyName: account.companyName,
+      termsVersion: AppConfig.termsVersion,
+    );
+  }
+
+  @override
+  Future<void> sendPasswordReset(String email) async => resetEmail = email;
+
+  @override
+  Future<void> updatePassword(String password) async => newPassword = password;
+
+  @override
+  Future<void> deleteAccount() async {
+    deleted = true;
+    signedOut = true;
+    _sessions.add(false);
+  }
 
   @override
   Future<void> signIn({
@@ -36,7 +78,10 @@ class FakeAuth implements AuthService {
   }) async => SignUpOutcome.signedIn;
 
   @override
-  Future<void> signOut() async => signedOut = true;
+  Future<void> signOut() async {
+    signedOut = true;
+    _sessions.add(false);
+  }
 }
 
 const brandAccount = Account(
@@ -260,6 +305,7 @@ class FakeMarketplace implements MarketplaceService {
   Future<List<Campaign>> openCampaigns(CampaignFilter filter) async => [
     for (final c in campaigns.values)
       if (c.status == CampaignStatus.active &&
+          !blocked.contains(c.brandId) &&
           c.visibility == CampaignVisibility.open &&
           (filter.niche == null || c.niche == filter.niche) &&
           (filter.compensation == null ||
@@ -423,7 +469,8 @@ class FakeMarketplace implements MarketplaceService {
         : lists[filter.shortlistId]?.$2;
     return [
       for (final c in creators.values)
-        if ((q.isEmpty ||
+        if (!blocked.contains(c.id) &&
+            (q.isEmpty ||
                 c.fullName.toLowerCase().contains(q) ||
                 (c.instagramHandle ?? '').contains(q)) &&
             (filter.niche == null || c.niches.contains(filter.niche)) &&
@@ -667,4 +714,38 @@ class FakeMarketplace implements MarketplaceService {
 
   @override
   Future<void> markRead(String conversationId) async {}
+
+  final reports = <(ReportTarget, String, ReportReason, String?)>[];
+  final blocked = <String>{};
+
+  @override
+  Future<void> report(
+    ReportTarget target,
+    String targetId,
+    ReportReason reason, {
+    String? details,
+  }) async => reports.add((target, targetId, reason, details));
+
+  @override
+  Future<void> block(String userId) async {
+    blocked.add(userId);
+    _changed();
+  }
+
+  @override
+  Future<void> unblock(String userId) async {
+    blocked.remove(userId);
+    _changed();
+  }
+
+  @override
+  Future<List<BlockedUser>> blockedUsers() async => [
+    for (final id in blocked)
+      BlockedUser(
+        id: id,
+        name:
+            creators[id]?.displayName ??
+            (id == brandId ? 'Acme Skin' : 'Shor user'),
+      ),
+  ];
 }

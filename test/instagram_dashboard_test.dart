@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shor/backend/instagram_service.dart';
 import 'package:shor/screens/instagram_dashboard_page.dart';
 import 'package:shor/theme/app_text.dart';
+import 'package:shor/utils/links.dart';
 
 class FakeInstagramService implements InstagramService {
   FakeInstagramService(this.dashboard);
 
   InstagramDashboard? dashboard;
   int connectCalls = 0;
+  String? lastReturnTo;
   int syncCalls = 0;
   bool disconnected = false;
 
@@ -18,6 +21,7 @@ class FakeInstagramService implements InstagramService {
   @override
   Future<Uri> startConnect({String? returnTo}) async {
     connectCalls++;
+    lastReturnTo = returnTo;
     return Uri.parse('https://www.instagram.com/oauth/authorize?state=x');
   }
 
@@ -71,13 +75,13 @@ Future<void> pumpDashboard(
 void main() {
   AppText.useGoogleFonts = false;
 
-  testWidgets('not connected: explains access and starts OAuth', (
+  testWidgets('not connected: explains access and connects in-app', (
     tester,
   ) async {
-    final opened = <Uri>[];
-    openExternalUrl = (uri, {sameTab = false}) async {
-      opened.add(uri);
-      return true;
+    final calls = <(Uri, String)>[];
+    authenticateInApp = (url, scheme) async {
+      calls.add((url, scheme));
+      return 'shor://instagram?instagram=connected';
     };
     final service = FakeInstagramService(null);
     await pumpDashboard(tester, service, size: const Size(390, 1600));
@@ -88,8 +92,27 @@ void main() {
     await tester.tap(find.text('Connect Instagram'));
     await tester.pumpAndSettle();
 
+    // Phones run Instagram's login in the in-app sheet and come back to
+    // shor://instagram, not to the browser.
     expect(service.connectCalls, 1);
-    expect(opened.single.host, 'www.instagram.com');
+    expect(service.lastReturnTo, 'shor://instagram');
+    expect(calls.single.$1.host, 'www.instagram.com');
+    expect(calls.single.$2, 'shor');
+    expect(find.textContaining('Instagram connected'), findsOneWidget);
+  });
+
+  testWidgets('cancelling the Instagram sheet says so', (tester) async {
+    authenticateInApp = (url, scheme) async =>
+        throw PlatformException(code: 'CANCELED');
+    await pumpDashboard(
+      tester,
+      FakeInstagramService(null),
+      size: const Size(390, 1600),
+    );
+
+    await tester.tap(find.text('Connect Instagram'));
+    await tester.pumpAndSettle();
+    expect(find.text('Instagram connection cancelled.'), findsOneWidget);
   });
 
   testWidgets('sample preview is clearly labelled', (tester) async {

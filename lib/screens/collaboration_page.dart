@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../backend/marketplace_service.dart';
+import '../config/app_config.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import '../utils/format.dart';
@@ -9,6 +10,7 @@ import '../utils/responsive.dart';
 import '../widgets/app_buttons.dart';
 import '../widgets/marketplace_widgets.dart';
 import '../widgets/responsive_grid.dart';
+import '../widgets/safety.dart';
 import 'brand/creator_profile_page.dart';
 import 'chat_page.dart';
 import 'creator/campaign_detail_page.dart';
@@ -227,7 +229,9 @@ class _CollabViewState extends State<_CollabView> {
             ],
           ),
         ),
-        if (widget.data.live != null) ...[
+        // Without Instagram connections there are no insights to show.
+        if (widget.data.live != null &&
+            (AppConfig.instagramEnabled || widget.data.live!.matched)) ...[
           const SizedBox(height: 14),
           _livePerformance(widget.data.live!),
         ],
@@ -256,6 +260,30 @@ class _CollabViewState extends State<_CollabView> {
             ),
           ),
         ],
+        const SizedBox(height: 20),
+        SafetyLinks(
+          reportLabel: 'Report $_otherName',
+          onReport: () => showReportSheet(
+            context,
+            service: widget.service,
+            // Brands report the creator's pitch; creators the campaign brief.
+            target: _isBrand
+                ? ReportTarget.collaboration
+                : ReportTarget.campaign,
+            targetId: _isBrand ? _collab.id : _collab.campaignId,
+            subject: _otherName,
+          ),
+          blockLabel: 'Block $_otherName',
+          onBlock: () async {
+            final blocked = await confirmBlock(
+              context,
+              service: widget.service,
+              userId: _isBrand ? _collab.creatorId : _collab.brandId,
+              name: _otherName,
+            );
+            if (blocked && context.mounted) Navigator.of(context).pop();
+          },
+        ),
       ],
     );
   }

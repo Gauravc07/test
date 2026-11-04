@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../backend/auth_service.dart';
 import '../backend/instagram_service.dart';
 import '../backend/marketplace_service.dart';
+import '../config/app_config.dart';
 import '../sections/navigation_bar.dart' show Wordmark;
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -17,6 +18,7 @@ import 'creator/discover_campaigns_tab.dart';
 import 'creator/my_work_tab.dart';
 import 'instagram_dashboard_page.dart';
 import 'messages_tab.dart';
+import 'terms_page.dart';
 
 enum HomeTab {
   // Creators
@@ -103,8 +105,23 @@ class _HomeShellState extends State<HomeShell> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
+        final account = snapshot.data!;
+        // Nothing can be posted before the current terms are accepted.
+        if (account.needsTerms) {
+          return TermsAcceptancePage(
+            auth: _auth,
+            onSignOut: _signOut,
+            onAccepted: () {
+              final reloaded = _auth.loadAccount();
+              setState(() {
+                _account = reloaded;
+              });
+            },
+          );
+        }
         return _RoleShell(
-          account: snapshot.data!,
+          account: account,
+          auth: widget.auth,
           marketplace: widget.marketplace,
           instagram: widget.instagram,
           initialTab: widget.initialTab,
@@ -180,6 +197,7 @@ class _RoleShell extends StatefulWidget {
   const _RoleShell({
     required this.account,
     required this.onSignOut,
+    this.auth,
     this.marketplace,
     this.instagram,
     this.initialTab,
@@ -188,6 +206,7 @@ class _RoleShell extends StatefulWidget {
 
   final Account account;
   final VoidCallback onSignOut;
+  final AuthService? auth;
   final MarketplaceService? marketplace;
   final InstagramService? instagram;
   final HomeTab? initialTab;
@@ -200,7 +219,11 @@ class _RoleShell extends StatefulWidget {
 class _RoleShellState extends State<_RoleShell> {
   late final List<_TabSpec> _tabs = widget.account.role == AccountRole.brand
       ? _brandTabs
-      : _creatorTabs;
+      : [
+          for (final t in _creatorTabs)
+            // Hidden in store builds until Meta approves the Instagram app.
+            if (t.tab != HomeTab.insights || AppConfig.instagramEnabled) t,
+        ];
   late int _index = () {
     final i = _tabs.indexWhere((t) => t.tab == widget.initialTab);
     return i < 0 ? 0 : i;
@@ -239,12 +262,16 @@ class _RoleShellState extends State<_RoleShell> {
           ? BrandAccountTab(
               account: widget.account,
               onSignOut: widget.onSignOut,
+              auth: widget.auth,
               service: widget.marketplace,
             )
           : CreatorProfileTab(
               account: widget.account,
               onSignOut: widget.onSignOut,
-              onOpenInsights: () => _select(HomeTab.insights),
+              onOpenInsights: AppConfig.instagramEnabled
+                  ? () => _select(HomeTab.insights)
+                  : null,
+              auth: widget.auth,
               service: widget.marketplace,
             ),
   };

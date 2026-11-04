@@ -7,6 +7,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import '../utils/format.dart';
 import '../widgets/marketplace_widgets.dart';
+import '../widgets/safety.dart';
 
 /// A live conversation between a brand and a creator.
 class ChatPage extends StatefulWidget {
@@ -65,8 +66,38 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     final me = _service.currentUserId;
     final title = widget.conversation.otherName(me);
+    final c = widget.conversation;
+    final otherId = me == c.brandId ? c.creatorId : c.brandId;
     return ShorPage(
       title: title,
+      actions: [
+        PopupMenuButton<String>(
+          tooltip: 'More',
+          onSelected: (action) async {
+            if (action == 'report') {
+              await showReportSheet(
+                context,
+                service: _service,
+                target: ReportTarget.user,
+                targetId: otherId,
+                subject: title,
+              );
+            } else if (action == 'block') {
+              final blocked = await confirmBlock(
+                context,
+                service: _service,
+                userId: otherId,
+                name: title,
+              );
+              if (blocked && context.mounted) Navigator.of(context).pop();
+            }
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(value: 'report', child: Text('Report $title')),
+            PopupMenuItem(value: 'block', child: Text('Block $title')),
+          ],
+        ),
+      ],
       body: Column(
         children: [
           if (widget.conversation.campaignTitle != null)
@@ -108,7 +139,21 @@ class _ChatPageState extends State<ChatPage> {
                   itemCount: messages.length,
                   itemBuilder: (context, i) {
                     final m = messages[messages.length - 1 - i];
-                    return _Bubble(message: m, mine: m.senderId == me);
+                    final mine = m.senderId == me;
+                    return _Bubble(
+                      message: m,
+                      mine: mine,
+                      // Long-press someone else's message to report it.
+                      onLongPress: mine
+                          ? null
+                          : () => showReportSheet(
+                              context,
+                              service: _service,
+                              target: ReportTarget.message,
+                              targetId: m.id,
+                              subject: 'this message',
+                            ),
+                    );
                   },
                 );
               },
@@ -165,13 +210,23 @@ class _ChatPageState extends State<ChatPage> {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message, required this.mine});
+  const _Bubble({required this.message, required this.mine, this.onLongPress});
 
   final ChatMessage message;
   final bool mine;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
+    final bubble = _bubble(context);
+    if (onLongPress == null) return bubble;
+    return Semantics(
+      onLongPressHint: 'Report message',
+      child: GestureDetector(onLongPress: onLongPress, child: bubble),
+    );
+  }
+
+  Widget _bubble(BuildContext context) {
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(

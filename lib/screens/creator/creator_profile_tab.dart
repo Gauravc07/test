@@ -9,6 +9,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/marketplace_widgets.dart';
 import '../../widgets/responsive_grid.dart';
+import '../settings/account_settings.dart';
 import '../shared/invoice_card.dart';
 
 /// Creator side: public profile, Instagram status, earnings and log out.
@@ -18,12 +19,16 @@ class CreatorProfileTab extends StatelessWidget {
     required this.account,
     required this.onSignOut,
     this.onOpenInsights,
+    this.auth,
     this.service,
   });
 
   final Account account;
   final VoidCallback onSignOut;
+
+  /// Null when the Instagram Insights tab is switched off.
   final VoidCallback? onOpenInsights;
+  final AuthService? auth;
   final MarketplaceService? service;
 
   MarketplaceService get _service => service ?? marketplaceService;
@@ -50,11 +55,13 @@ class CreatorProfileTab extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _InstagramStatus(
-                  profile: profile,
-                  onOpenInsights: onOpenInsights,
-                ),
-                const SizedBox(height: 14),
+                if (onOpenInsights != null || profile.instagramVerified) ...[
+                  _InstagramStatus(
+                    profile: profile,
+                    onOpenInsights: onOpenInsights,
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 _CreatorProfileForm(
                   profile: profile,
                   email: account.email,
@@ -63,13 +70,10 @@ class CreatorProfileTab extends StatelessWidget {
                 const SizedBox(height: 24),
                 _Earnings(invoices: invoices),
                 const SizedBox(height: 24),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlineActionButton(
-                    label: 'Log out',
-                    trailingIcon: Icons.logout,
-                    onPressed: onSignOut,
-                  ),
+                AccountSettingsSection(
+                  auth: auth,
+                  marketplace: service,
+                  onSignOut: onSignOut,
                 ),
               ],
             );

@@ -188,6 +188,7 @@ Rules notified 13 November 2025. Core duties apply from **13 May 2027**.
      IG_APP_ID=... IG_APP_SECRET=... \
      APP_URL=https://<your-web-app> \
      ALLOWED_RETURN_ORIGINS=https://<your-web-app>,http://localhost \
+     ALLOWED_RETURN_SCHEMES=shor \
      CRON_SECRET=$(openssl rand -hex 32)
    npx supabase functions deploy
    ```
@@ -221,7 +222,7 @@ Rules notified 13 November 2025. Core duties apply from **13 May 2027**.
 | 4 | Creator-controlled "share my full insights with this brand" (audience and account metrics, explicit and revocable consent) | Next |
 | 5 | "Continue with Instagram" sign-in | Planned |
 | 6 | Business Discovery: brands look up any public professional account by username before inviting | Planned |
-| 7 | Mobile deep link back into the app after connecting (today mobile users finish in the browser and tap Refresh) | Planned |
+| 7 | Phones connect Instagram in the in-app sign-in sheet and return to `shor://instagram` (no trip to Safari) | **Built** |
 
 ## Sources
 

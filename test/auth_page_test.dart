@@ -48,6 +48,26 @@ class FakeAuthService implements AuthService {
   Future<void> signOut() async => signedIn = false;
 
   @override
+  Stream<bool> get sessionChanges => const Stream.empty();
+
+  @override
+  Stream<void> get passwordRecovery => const Stream.empty();
+
+  String? resetEmail;
+
+  @override
+  Future<void> sendPasswordReset(String email) async => resetEmail = email;
+
+  @override
+  Future<void> acceptTerms() async {}
+
+  @override
+  Future<void> updatePassword(String password) async {}
+
+  @override
+  Future<void> deleteAccount() async => signedIn = false;
+
+  @override
   Future<Account> loadAccount() async => const Account(
     id: 'u1',
     email: 'bea@acme.test',
@@ -102,6 +122,14 @@ void main() {
     await tester.enterText(field('Email'), 'bea@acme.test');
     await tester.enterText(field('Password'), 'supersecret');
     await tester.enterText(field('Confirm password'), 'supersecret');
+
+    // The terms must be accepted before an account is created.
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Please agree to the terms to continue'), findsOneWidget);
+    expect(service.lastSignUp, isNull);
+
+    await tester.tap(find.byType(Checkbox));
     await tester.tap(find.text('Create account'));
     await tester.pumpAndSettle();
 
@@ -112,6 +140,21 @@ void main() {
       'companyName': 'Acme Co',
     });
     expect(find.text('Check your inbox'), findsOneWidget);
+  });
+
+  testWidgets('forgot password sends a reset link', (tester) async {
+    final service = FakeAuthService();
+    await pumpAuth(tester, service);
+
+    await tester.enterText(field('Email'), 'bea@acme.test');
+    await tester.tap(find.text('Forgot password?'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reset your password'), findsOneWidget);
+    await tester.tap(find.text('Send link'));
+    await tester.pumpAndSettle();
+
+    expect(service.resetEmail, 'bea@acme.test');
+    expect(find.textContaining('we sent a link'), findsOneWidget);
   });
 
   testWidgets('login opens the brand home for a brand account', (tester) async {

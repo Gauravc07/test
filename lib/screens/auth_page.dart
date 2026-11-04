@@ -4,6 +4,8 @@ import '../backend/auth_service.dart';
 import '../sections/navigation_bar.dart' show Wordmark;
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../config/app_config.dart';
+import '../utils/links.dart';
 import '../widgets/app_buttons.dart';
 import 'home_shell.dart';
 
@@ -23,12 +25,21 @@ void openAccount(BuildContext context, {AuthMode mode = AuthMode.signIn}) {
 
 /// Login and sign-up for creators and brands.
 class AuthPage extends StatefulWidget {
-  const AuthPage({super.key, this.initialMode = AuthMode.signIn, this.service});
+  const AuthPage({
+    super.key,
+    this.initialMode = AuthMode.signIn,
+    this.service,
+    this.popOnSuccess = false,
+  });
 
   final AuthMode initialMode;
 
   /// Defaults to the app-wide [authService].
   final AuthService? service;
+
+  /// On success, close this page (the mobile root shows the home tabs once
+  /// signed in) instead of opening the home tabs on top.
+  final bool popOnSuccess;
 
   @override
   State<AuthPage> createState() => _AuthPageState();
@@ -46,6 +57,7 @@ class _AuthPageState extends State<AuthPage> {
   AccountRole _role = AccountRole.creator;
   bool _busy = false;
   bool _obscure = true;
+  bool _agreed = false;
   String? _error;
 
   /// Set after sign-up when the user still has to confirm their email.
@@ -95,6 +107,10 @@ class _AuthPageState extends State<AuthPage> {
         await _service.signIn(email: _email.text, password: _password.text);
       }
       if (!mounted) return;
+      if (widget.popOnSuccess) {
+        Navigator.of(context).pop();
+        return;
+      }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => HomeShell(auth: widget.service),
@@ -104,6 +120,27 @@ class _AuthPageState extends State<AuthPage> {
       if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    final email = await showDialog<String>(
+      context: context,
+      builder: (_) => _ResetDialog(initialEmail: _email.text.trim()),
+    );
+    if (email == null || !mounted) return;
+    try {
+      await _service.sendPasswordReset(email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'If $email has a Shor account, we sent a link to set a new password.',
+          ),
+        ),
+      );
+    } on AuthFailure catch (e) {
+      if (mounted) setState(() => _error = e.message);
     }
   }
 
@@ -267,6 +304,14 @@ class _AuthPageState extends State<AuthPage> {
               },
               onSubmitted: _signUp ? null : (_) => _submit(),
             ),
+            if (!_signUp)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _busy ? null : _forgotPassword,
+                  child: const Text('Forgot password?'),
+                ),
+              ),
             if (_signUp)
               _field(
                 controller: _confirm,
@@ -276,6 +321,67 @@ class _AuthPageState extends State<AuthPage> {
                 validator: (v) =>
                     v != _password.text ? 'Passwords do not match' : null,
                 onSubmitted: (_) => _submit(),
+              ),
+            if (_signUp)
+              FormField<bool>(
+                key: const ValueKey('terms-agreement'),
+                validator: (_) =>
+                    _agreed ? null : 'Please agree to the terms to continue',
+                builder: (state) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Checkbox(
+                            value: _agreed,
+                            onChanged: _busy
+                                ? null
+                                : (v) {
+                                    setState(() => _agreed = v ?? false);
+                                    state.didChange(v);
+                                  },
+                          ),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Text(
+                                'I agree to the Terms of Use and Privacy Policy, '
+                                'including zero tolerance for abusive content '
+                                'and users.',
+                                style: AppText.sans(size: 14),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Wrap(
+                        children: [
+                          TextButton(
+                            onPressed: () =>
+                                openInAppBrowser(AppConfig.termsUrl),
+                            child: const Text('Read the terms'),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                openInAppBrowser(AppConfig.privacyPolicyUrl),
+                            child: const Text('Read the privacy policy'),
+                          ),
+                        ],
+                      ),
+                      if (state.hasError)
+                        Text(
+                          state.errorText!,
+                          style: AppText.sans(
+                            size: 13,
+                            color: const Color(0xFFB42318),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             if (_error != null) ...[
               Container(
@@ -349,6 +455,68 @@ class _AuthPageState extends State<AuthPage> {
             : TextInputAction.next,
         onFieldSubmitted: onSubmitted,
       ),
+    );
+  }
+}
+
+/// Asks for the email to send a password reset link to.
+class _ResetDialog extends StatefulWidget {
+  const _ResetDialog({required this.initialEmail});
+
+  final String initialEmail;
+
+  @override
+  State<_ResetDialog> createState() => _ResetDialogState();
+}
+
+class _ResetDialogState extends State<_ResetDialog> {
+  late final _email = TextEditingController(text: widget.initialEmail);
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reset your password'),
+      content: Form(
+        key: _formKey,
+        child: SizedBox(
+          width: 380,
+          child: TextFormField(
+            controller: _email,
+            autofocus: true,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            decoration: const InputDecoration(
+              labelText: 'Email',
+              helperText: 'We will email you a link to set a new password.',
+            ),
+            validator: (v) =>
+                RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch((v ?? '').trim())
+                ? null
+                : 'Enter a valid email',
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            if (_formKey.currentState?.validate() ?? false) {
+              Navigator.pop(context, _email.text.trim());
+            }
+          },
+          child: const Text('Send link'),
+        ),
+      ],
     );
   }
 }

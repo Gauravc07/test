@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../backend/marketplace_service.dart';
+import '../../config/app_config.dart';
+import '../../widgets/safety.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../utils/format.dart';
@@ -39,10 +41,35 @@ class CampaignDetailPage extends StatelessWidget {
               Expanded(
                 child: PageList(
                   maxWidth: 820,
-                  children: CampaignBrief.sections(
-                    campaign,
-                    creatorProfile: profile,
-                  ),
+                  children: [
+                    ...CampaignBrief.sections(
+                      campaign,
+                      creatorProfile: profile,
+                    ),
+                    const SizedBox(height: 20),
+                    SafetyLinks(
+                      reportLabel: 'Report campaign',
+                      onReport: () => showReportSheet(
+                        context,
+                        service: _service,
+                        target: ReportTarget.campaign,
+                        targetId: campaign.id,
+                        subject: 'this campaign',
+                      ),
+                      blockLabel: 'Block ${campaign.brandDisplayName}',
+                      onBlock: () async {
+                        final blocked = await confirmBlock(
+                          context,
+                          service: _service,
+                          userId: campaign.brandId,
+                          name: campaign.brandDisplayName,
+                        );
+                        if (blocked && context.mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                    ),
+                  ],
                 ),
               ),
               BottomActions(
@@ -161,7 +188,9 @@ class CampaignBrief {
       const SizedBox(height: 14),
       CampaignFacts(campaign: c),
       const SizedBox(height: 20),
-      if (profile != null && !profile.instagramVerified) ...[
+      if (profile != null &&
+          !profile.instagramVerified &&
+          AppConfig.instagramEnabled) ...[
         const Note(
           'Connect your Instagram from the Insights tab so brands see verified '
           'follower and engagement numbers on your application.',

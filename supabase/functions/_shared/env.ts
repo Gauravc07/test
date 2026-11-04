@@ -45,15 +45,27 @@ export const env = {
 
   /** Shared secret for the scheduled sync job. */
   cronSecret: () => Deno.env.get("CRON_SECRET") ?? "",
+
+  /**
+   * App URL schemes the mobile apps return to after connecting Instagram
+   * (in-app browser sheet), comma-separated. Defaults to "shor".
+   */
+  allowedReturnSchemes: () =>
+    (Deno.env.get("ALLOWED_RETURN_SCHEMES") ?? "shor")
+      .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
 };
 
-/** True if [url] is on an allowed origin (only http/https). */
+/** True if [url] is on an allowed web origin or app scheme. */
 export function isAllowedReturnUrl(url: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return false;
+  }
+  const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
+  if (env.allowedReturnSchemes().includes(scheme) && scheme !== "http" && scheme !== "https") {
+    return true;
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
   return env.allowedReturnOrigins().some((allowed) => {

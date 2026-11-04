@@ -126,6 +126,23 @@ abstract interface class MarketplaceService {
   Future<void> sendMessage(String conversationId, String body);
 
   Future<void> markRead(String conversationId);
+
+  // Safety ------------------------------------------------------------------
+
+  /// Sends a report to Shor's moderators.
+  Future<void> report(
+    ReportTarget target,
+    String targetId,
+    ReportReason reason, {
+    String? details,
+  });
+
+  /// Stops all contact with [userId] and hides their content.
+  Future<void> block(String userId);
+
+  Future<void> unblock(String userId);
+
+  Future<List<BlockedUser>> blockedUsers();
 }
 
 /// The app-wide marketplace service. Created on first use.
@@ -182,7 +199,11 @@ class SupabaseMarketplaceService implements MarketplaceService {
           ),
         };
         final rows = await ordered.limit(100);
-        return rows.map(Campaign.fromRow).toList();
+        final blocked = await _blockedIds();
+        return rows
+            .map(Campaign.fromRow)
+            .where((c) => !blocked.contains(c.brandId))
+            .toList();
       });
 
   @override
@@ -473,7 +494,11 @@ class SupabaseMarketplaceService implements MarketplaceService {
           CreatorSort.newest => q.order('created_at', ascending: false),
         };
         final rows = await ordered.limit(60);
-        return rows.map(CreatorSummary.fromRow).toList();
+        final blocked = await _blockedIds();
+        return rows
+            .map(CreatorSummary.fromRow)
+            .where((c) => !blocked.contains(c.id))
+            .toList();
       });
 
   @override
@@ -744,13 +769,17 @@ class SupabaseMarketplaceService implements MarketplaceService {
     final creators = await _creators(
       rows.map((r) => r['creator_id'] as String),
     );
+    final blocked = await _blockedIds();
     return [
       for (final r in rows)
-        Conversation.fromRow(
-          r,
-          creatorName: creators[r['creator_id']]?.displayName,
-          unread: unread[r['id']] ?? 0,
-        ),
+        // Chats with people you blocked are hidden.
+        if (!blocked.contains(r['brand_id']) &&
+            !blocked.contains(r['creator_id']))
+          Conversation.fromRow(
+            r,
+            creatorName: creators[r['creator_id']]?.displayName,
+            unread: unread[r['id']] ?? 0,
+          ),
     ];
   });
 
@@ -820,6 +849,81 @@ class SupabaseMarketplaceService implements MarketplaceService {
         .isFilter('read_at', null);
   });
 
+  // Safety ------------------------------------------------------------------
+
+  @override
+  Future<void> report(
+    ReportTarget target,
+    String targetId,
+    ReportReason reason, {
+    String? details,
+  }) => _guard(() async {
+    final text = details?.trim() ?? '';
+    // No .select(): reporters may not read back moderator-only columns.
+    await _db.from('content_reports').insert({
+      'target_type': dbName(target),
+      'target_id': targetId,
+      'reason': dbName(reason),
+      'details': text.isEmpty ? null : text,
+    });
+  });
+
+  @override
+  Future<void> block(String userId) => _mutate(() async {
+    await _db
+        .from('user_blocks')
+        .upsert(
+          {'blocked_id': userId},
+          onConflict: 'blocker_id,blocked_id',
+          ignoreDuplicates: true,
+        );
+  });
+
+  @override
+  Future<void> unblock(String userId) => _mutate(() async {
+    await _db.from('user_blocks').delete().eq('blocked_id', userId);
+  });
+
+  @override
+  Future<List<BlockedUser>> blockedUsers() => _guard(() async {
+    final rows = await _db
+        .from('user_blocks')
+        .select('blocked_id, created_at')
+        .order('created_at', ascending: false);
+    final ids = rows.map((r) => r['blocked_id'] as String).toList();
+    if (ids.isEmpty) return const [];
+    final people = await _db
+        .from('profiles')
+        .select('id, full_name')
+        .inFilter('id', ids);
+    final brands = await _db
+        .from('brand_profiles')
+        .select('id, company_name')
+        .inFilter('id', ids);
+    final names = {
+      for (final p in people)
+        p['id'] as String: p['full_name'] as String? ?? '',
+      for (final b in brands)
+        b['id'] as String: b['company_name'] as String? ?? '',
+    };
+    return [
+      for (final r in rows)
+        BlockedUser(
+          id: r['blocked_id'] as String,
+          name: (names[r['blocked_id']] ?? '').trim().isEmpty
+              ? 'Shor user'
+              : names[r['blocked_id']]!.trim(),
+          blockedAt: parseTimestamp(r['created_at']),
+        ),
+    ];
+  });
+
+  /// People the signed-in user blocked; their content is hidden.
+  Future<Set<String>> _blockedIds() async {
+    final rows = await _db.from('user_blocks').select('blocked_id');
+    return {for (final r in rows) r['blocked_id'] as String};
+  }
+
   // Helpers -----------------------------------------------------------------
 
   Future<Map<String, CreatorSummary>> _creators(Iterable<String> ids) async {
@@ -881,6 +985,11 @@ String friendlyDatabaseError(String? code, String message) {
   }
   if (code == '23514') {
     return 'Some details are not valid. Check the form and try again.';
+  }
+  // Chat rules: participants only, and no messages between blocked people.
+  if (message.contains('row-level security') &&
+      (message.contains('"messages"') || message.contains('"conversations"'))) {
+    return 'You can’t message this account.';
   }
   if (technical && (code == '42501' || code == '42P01')) {
     return 'You do not have permission to do that.';

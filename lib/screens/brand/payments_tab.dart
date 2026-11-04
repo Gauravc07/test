@@ -116,7 +116,9 @@ class _PaymentsTabState extends State<PaymentsTab> {
                       InvoiceCard(
                         invoice: i,
                         brandView: true,
-                        onTap: () => _open(i),
+                        onTap: i.collaborationId == null
+                            ? null
+                            : () => _open(i.collaborationId!),
                         actions: [
                           SmallButton(
                             label: 'Approve',
@@ -139,7 +141,9 @@ class _PaymentsTabState extends State<PaymentsTab> {
                       InvoiceCard(
                         invoice: i,
                         brandView: true,
-                        onTap: () => _open(i),
+                        onTap: i.collaborationId == null
+                            ? null
+                            : () => _open(i.collaborationId!),
                       ),
                       const SizedBox(height: 10),
                     ],
@@ -153,10 +157,10 @@ class _PaymentsTabState extends State<PaymentsTab> {
     );
   }
 
-  void _open(Invoice i) => Navigator.of(context).push(
+  void _open(String collaborationId) => Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => CollaborationPage(
-        collaborationId: i.collaborationId,
+        collaborationId: collaborationId,
         service: widget.service,
       ),
     ),

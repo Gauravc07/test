@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/app_config.dart';
+
 /// The two kinds of Shor account. Matches the `user_role` enum in the
 /// database.
 enum AccountRole { creator, brand }
@@ -15,6 +17,7 @@ class Account {
     this.companyName,
     this.handle,
     this.verified = false,
+    this.termsVersion = AppConfig.termsVersion,
   });
 
   final String id;
@@ -28,6 +31,12 @@ class Account {
   /// Creators only; empty until they pick one.
   final String? handle;
   final bool verified;
+
+  /// The Terms of Use version this person accepted, if any.
+  final String? termsVersion;
+
+  /// True when the person must accept the current Terms before continuing.
+  bool get needsTerms => termsVersion != AppConfig.termsVersion;
 }
 
 enum SignUpOutcome {
@@ -54,6 +63,14 @@ class AuthFailure implements Exception {
 abstract interface class AuthService {
   bool get isSignedIn;
 
+  /// Emits whether someone is signed in, whenever that changes (log in,
+  /// log out, account deleted).
+  Stream<bool> get sessionChanges;
+
+  /// Fires when someone opens a password reset link.
+  Stream<void> get passwordRecovery;
+
+  /// Signing up also records acceptance of the current Terms of Use.
   Future<SignUpOutcome> signUp({
     required String email,
     required String password,
@@ -67,6 +84,18 @@ abstract interface class AuthService {
   Future<void> signOut();
 
   Future<Account> loadAccount();
+
+  /// Records acceptance of [AppConfig.termsVersion].
+  Future<void> acceptTerms();
+
+  /// Emails a link to set a new password.
+  Future<void> sendPasswordReset(String email);
+
+  /// Sets a new password for the signed-in user (after a reset link).
+  Future<void> updatePassword(String password);
+
+  /// Permanently deletes the signed-in user's account and signs out.
+  Future<void> deleteAccount();
 }
 
 /// The app-wide auth service. Created on first use, after
@@ -79,8 +108,22 @@ class SupabaseAuthService implements AuthService {
   final SupabaseClient? _clientOverride;
   SupabaseClient get _client => _clientOverride ?? Supabase.instance.client;
 
+  /// Where email links (confirmation, password reset) open. On the web the
+  /// current site; on phones the public website.
+  static String get _redirectBase =>
+      kIsWeb ? Uri.base.origin : AppConfig.websiteUrl;
+
   @override
   bool get isSignedIn => _client.auth.currentSession != null;
+
+  @override
+  Stream<bool> get sessionChanges =>
+      _client.auth.onAuthStateChange.map((s) => s.session != null).distinct();
+
+  @override
+  Stream<void> get passwordRecovery => _client.auth.onAuthStateChange
+      .where((s) => s.event == AuthChangeEvent.passwordRecovery)
+      .map((_) {});
 
   @override
   Future<SignUpOutcome> signUp({
@@ -94,14 +137,14 @@ class SupabaseAuthService implements AuthService {
       () => _client.auth.signUp(
         email: email.trim(),
         password: password,
-        // On web, bring the user back to this site after they confirm.
-        emailRedirectTo: kIsWeb ? Uri.base.origin : null,
+        emailRedirectTo: '$_redirectBase/',
         // Read by the handle_new_user trigger to create the profile.
         data: {
           'role': role.name,
           'full_name': fullName.trim(),
           if (role == AccountRole.brand && companyName != null)
             'company_name': companyName.trim(),
+          'terms_version': AppConfig.termsVersion,
         },
       ),
     );
@@ -129,7 +172,7 @@ class SupabaseAuthService implements AuthService {
 
     final profile = await _client
         .from('profiles')
-        .select('role, full_name, verified')
+        .select('role, full_name, verified, terms_version')
         .eq('id', user.id)
         .single();
     final role = AccountRole.values.byName(profile['role'] as String);
@@ -160,7 +203,36 @@ class SupabaseAuthService implements AuthService {
       companyName: companyName,
       handle: handle,
       verified: profile['verified'] as bool? ?? false,
+      termsVersion: profile['terms_version'] as String?,
     );
+  });
+
+  @override
+  Future<void> acceptTerms() => _guard(
+    () => _client.rpc(
+      'accept_terms',
+      params: {'p_version': AppConfig.termsVersion},
+    ),
+  );
+
+  @override
+  Future<void> sendPasswordReset(String email) => _guard(
+    () => _client.auth.resetPasswordForEmail(
+      email.trim(),
+      // reset=1 lets the web app open the "set a new password" screen.
+      redirectTo: '$_redirectBase/?reset=1',
+    ),
+  );
+
+  @override
+  Future<void> updatePassword(String password) =>
+      _guard(() => _client.auth.updateUser(UserAttributes(password: password)));
+
+  @override
+  Future<void> deleteAccount() => _guard(() async {
+    await _client.rpc('delete_my_account');
+    // The server sessions are gone with the account; clear this device.
+    await _client.auth.signOut(scope: SignOutScope.local);
   });
 
   /// Turns Supabase and network errors into messages fit for the UI.
@@ -173,9 +245,7 @@ class SupabaseAuthService implements AuthService {
       throw AuthFailure(_friendlyAuthMessage(e));
     } on PostgrestException catch (e) {
       debugPrint('Supabase query failed: ${e.code} ${e.message}');
-      throw const AuthFailure(
-        'We could not load your account. Please try again.',
-      );
+      throw const AuthFailure('We could not complete that. Please try again.');
     } catch (e) {
       debugPrint('Supabase request failed: $e');
       throw const AuthFailure(
@@ -194,6 +264,9 @@ class SupabaseAuthService implements AuthService {
     }
     if (message.contains('already registered')) {
       return 'An account with this email already exists. Try logging in.';
+    }
+    if (message.contains('should be different')) {
+      return 'Choose a password you have not used before.';
     }
     if (e.statusCode == '429' || message.contains('rate limit')) {
       return 'Too many attempts. Please wait a minute and try again.';

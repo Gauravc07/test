@@ -43,3 +43,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Flutter SDK fetched by the Vercel build (scripts/vercel-install.sh)
+.flutter-sdk/
+
+# Release signing keys: never commit
+*.jks
+*.keystore
+key.properties

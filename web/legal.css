@@ -1,0 +1,65 @@
+/* Shared style for Shor's legal and support pages. Self-contained: no
+   external fonts or scripts, so these pages make no third-party requests. */
+:root {
+  --bg: #fafaf8;
+  --card: #ffffff;
+  --ink: #0a1628;
+  --muted: #4a5568;
+  --soft: #8896a8;
+  --accent: #1e3a8a;
+  --accent-soft: #e6ebf5;
+  --border: #e8e4de;
+  --mark: #fff4c2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a1628;
+    --card: #13213a;
+    --ink: #f0efec;
+    --muted: #c3c8d2;
+    --soft: #8fa0b8;
+    --accent: #8fa6d8;
+    --accent-soft: #1c2c4a;
+    --border: #24324c;
+    --mark: #4a3f12;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+header, main, footer { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+header { padding-top: 28px; }
+.wordmark { display: inline-block; color: var(--ink); text-decoration: none; }
+.wordmark::before {
+  content: ""; display: block; width: 24px; height: 3px; border-radius: 2px;
+  background: var(--accent); margin-bottom: 3px;
+}
+.wordmark span { font: 700 22px/1.1 Georgia, "Times New Roman", serif; letter-spacing: -0.4px; }
+h1 { font: 600 34px/1.2 Georgia, "Times New Roman", serif; margin: 28px 0 6px; letter-spacing: -0.5px; }
+h2 { font-size: 20px; line-height: 1.3; margin: 34px 0 8px; }
+h3 { font-size: 16px; margin: 22px 0 6px; }
+p, li { color: var(--muted); }
+strong { color: var(--ink); }
+a { color: var(--accent); }
+ul, ol { padding-left: 22px; }
+li { margin: 4px 0; }
+.updated { color: var(--soft); font-size: 14px; }
+.card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 20px; margin: 18px 0;
+}
+.note { background: var(--accent-soft); border-radius: 10px; padding: 12px 16px; }
+mark { background: var(--mark); color: inherit; padding: 0 3px; border-radius: 3px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--ink); }
+td { color: var(--muted); }
+.table-wrap { overflow-x: auto; }
+footer { padding: 32px 16px 48px; color: var(--soft); font-size: 14px; }
+footer a { margin-right: 14px; }
+@media (max-width: 480px) { h1 { font-size: 28px; } }

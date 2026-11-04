@@ -47,7 +47,10 @@ class InvoiceCard extends StatelessWidget {
                     Text(
                       [
                         i.number,
-                        if (i.counterpartName != null) i.counterpartName!,
+                        if (i.counterpartName != null)
+                          i.counterpartName!
+                        else if ((brandView ? i.creatorId : i.brandId) == null)
+                          'Deleted account',
                         formatDate(i.createdAt),
                       ].join(' · '),
                       style: AppText.sans(size: 13, color: AppColors.textMuted),

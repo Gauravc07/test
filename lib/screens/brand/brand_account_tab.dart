@@ -6,6 +6,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/marketplace_widgets.dart';
+import '../settings/account_settings.dart';
 
 /// Brand side: the company profile creators see, and log out.
 class BrandAccountTab extends StatelessWidget {
@@ -13,11 +14,13 @@ class BrandAccountTab extends StatelessWidget {
     super.key,
     required this.account,
     required this.onSignOut,
+    this.auth,
     this.service,
   });
 
   final Account account;
   final VoidCallback onSignOut;
+  final AuthService? auth;
   final MarketplaceService? service;
 
   MarketplaceService get _service => service ?? marketplaceService;
@@ -40,13 +43,10 @@ class BrandAccountTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 24),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlineActionButton(
-            label: 'Log out',
-            trailingIcon: Icons.logout,
-            onPressed: onSignOut,
-          ),
+        AccountSettingsSection(
+          auth: auth,
+          marketplace: service,
+          onSignOut: onSignOut,
         ),
       ],
     );

@@ -40,10 +40,12 @@ flutter build web
 
 ```
 lib/
-  main.dart                 App entry point: starts Supabase, then MaterialApp
+  main.dart                 App entry point: website → landing page, phones → welcome screen
+  config/app_config.dart    Website, support email, terms version, Instagram switch
   backend/                  Supabase settings, AuthService, InstagramService,
                             MarketplaceService and its models
-  screens/landing_page.dart Stacks every section under the floating nav bar
+  screens/landing_page.dart Stacks every section under the floating nav bar (web)
+  screens/welcome_page.dart Phone start screen, and the signed-in/out switch
   screens/auth_page.dart    Login and sign-up (creator or brand)
   screens/home_shell.dart   Signed-in home: creator or brand tabs
   screens/creator/          Campaign feed, campaign brief + apply, my work, profile
@@ -52,16 +54,42 @@ lib/
   screens/collaboration_page.dart  One collaboration, for both sides
   screens/chat_page.dart    Live brand ↔ creator chat
   screens/instagram_dashboard_page.dart  Creator's Instagram insights dashboard
+  screens/settings/         Help, legal links, blocked accounts, delete account
+  screens/terms_page.dart   Accept the current Terms of Use
   sections/                 One file per landing page section
   widgets/                  Shared buttons, cards, headings, tags and grid
   data/landing_content.dart All landing page copy in one place
   theme/                    Colours, fonts (app_text.dart) and Material theme
   utils/responsive.dart     Tailwind-style breakpoints (sm/md/lg/xl)
 assets/images/              Logo and testimonial avatars
+assets/icon/                App icon sources (dart run flutter_launcher_icons)
+web/                        Web app shell plus privacy, terms, support, delete-account pages
 docs/                       Product notes carried over from the React version
 supabase/migrations/        Database schema (Supabase / PostgreSQL)
+scripts/, vercel.json       Website build on Vercel
+.github/workflows/ci.yml   Tests plus Android and iOS release builds on every push
 supabase/functions/         Edge Functions for the Instagram connection and sync
 ```
+
+## App Store and Google Play
+
+The phone apps open on a welcome screen; the website keeps the marketing
+page. The apps meet the store rules for account deletion, privacy policy,
+user-generated content (terms, word filter, report, block), support contact,
+target API level, privacy manifest and icons. The legal pages live in `web/`
+and are served at `/privacy`, `/terms`, `/support` and `/delete-account`.
+
+Build settings live in `lib/config/app_config.dart` and can be overridden at
+build time:
+
+```bash
+flutter build appbundle --release                               # Google Play
+flutter build ipa --release                                     # App Store (Mac)
+flutter build web --release --dart-define=INSTAGRAM_ENABLED=true # after Meta approval
+```
+
+The step-by-step launch checklist, prepared store answers and the moderation
+runbook are in [docs/store-launch.md](docs/store-launch.md).
 
 ## Marketplace
 

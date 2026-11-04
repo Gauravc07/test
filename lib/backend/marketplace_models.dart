@@ -599,9 +599,9 @@ class Invoice {
     return Invoice(
       id: r['id'] as String,
       number: r['invoice_number'] as String? ?? '',
-      collaborationId: r['collaboration_id'] as String,
-      brandId: r['brand_id'] as String,
-      creatorId: r['creator_id'] as String,
+      collaborationId: r['collaboration_id'] as String?,
+      brandId: r['brand_id'] as String?,
+      creatorId: r['creator_id'] as String?,
       gross: _num(r['gross_amount']) ?? 0,
       fee: _num(r['platform_fee']) ?? 0,
       net: _num(r['net_amount']) ?? 0,
@@ -612,7 +612,9 @@ class Invoice {
       createdAt: parseTimestamp(r['created_at']),
       decidedAt: parseTimestamp(r['decided_at']),
       paidAt: parseTimestamp(r['paid_at']),
-      campaignTitle: campaign is Map ? campaign['title'] as String? : null,
+      campaignTitle:
+          r['campaign_title'] as String? ??
+          (campaign is Map ? campaign['title'] as String? : null),
       counterpartName:
           counterpartName ??
           (brand is Map ? brand['company_name'] as String? : null),
@@ -621,9 +623,12 @@ class Invoice {
 
   final String id;
   final String number;
-  final String collaborationId;
-  final String brandId;
-  final String creatorId;
+
+  /// Null once either side deletes their account; the invoice itself is
+  /// kept for the other party's records.
+  final String? collaborationId;
+  final String? brandId;
+  final String? creatorId;
 
   /// What the brand pays.
   final num gross;
@@ -925,6 +930,32 @@ class CreatorFilter {
     shortlistId: shortlistId == null ? this.shortlistId : shortlistId(),
     sort: sort ?? this.sort,
   );
+}
+
+enum ReportTarget { user, campaign, message, collaboration }
+
+enum ReportReason {
+  spam('Spam'),
+  scam('Scam or fraud'),
+  harassment('Harassment or bullying'),
+  hate('Hate speech'),
+  sexual('Sexual content'),
+  violence('Violence or threats'),
+  impersonation('Pretending to be someone else'),
+  other('Something else');
+
+  const ReportReason(this.label);
+
+  final String label;
+}
+
+/// Someone the signed-in user has blocked.
+class BlockedUser {
+  const BlockedUser({required this.id, required this.name, this.blockedAt});
+
+  final String id;
+  final String name;
+  final DateTime? blockedAt;
 }
 
 /// A failure worth showing to the user as-is.

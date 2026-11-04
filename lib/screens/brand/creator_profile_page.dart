@@ -9,6 +9,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/marketplace_widgets.dart';
 import '../../widgets/responsive_grid.dart';
+import '../../widgets/safety.dart';
 import '../chat_page.dart';
 import 'creator_actions.dart';
 
@@ -169,6 +170,29 @@ class CreatorProfilePage extends StatelessWidget {
                       runSpacing: 8,
                       children: [for (final n in c.niches) StatusChip(n)],
                     ),
+                  const SizedBox(height: 28),
+                  SafetyLinks(
+                    reportLabel: 'Report creator',
+                    onReport: () => showReportSheet(
+                      context,
+                      service: _service,
+                      target: ReportTarget.user,
+                      targetId: c.id,
+                      subject: c.displayName,
+                    ),
+                    blockLabel: 'Block creator',
+                    onBlock: () async {
+                      final blocked = await confirmBlock(
+                        context,
+                        service: _service,
+                        userId: c.id,
+                        name: c.displayName,
+                      );
+                      if (blocked && context.mounted) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                  ),
                 ],
               ),
             ),

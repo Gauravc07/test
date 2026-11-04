@@ -66,6 +66,13 @@ Deno.test("return URL allowlist", async () => {
   assert(!isAllowedReturnUrl("http://shor.app/")); // https only for the real site
   assert(!isAllowedReturnUrl("javascript:alert(1)"));
   assert(!isAllowedReturnUrl("not a url"));
+  // Mobile apps return to their own scheme (default "shor").
+  assert(isAllowedReturnUrl("shor://instagram"));
+  assert(!isAllowedReturnUrl("othershor://instagram"));
+  Deno.env.set("ALLOWED_RETURN_SCHEMES", "shor,shordev");
+  assert(isAllowedReturnUrl("shordev://instagram"));
+  assert(!isAllowedReturnUrl("javascript:alert(1)"));
+  Deno.env.delete("ALLOWED_RETURN_SCHEMES");
 });
 
 Deno.test("token exchange parses both response shapes and strips #_", async () => {
