@@ -1,0 +1,22 @@
+# Supabase CLI settings for deploying the Edge Functions.
+# Project: tnevsivuemhlrlclpfuw (link with `npx supabase link`).
+project_id = "shor"
+
+# Every function checks the caller itself: user sessions are verified with
+# the Auth server, Meta callbacks by their HMAC signature, and the OAuth
+# callback by its one-time state. The gateway JWT check is off because
+# Instagram's redirect and Meta's callbacks carry no Supabase JWT.
+[functions.instagram-connect]
+verify_jwt = false
+
+[functions.instagram-callback]
+verify_jwt = false
+
+[functions.instagram-sync]
+verify_jwt = false
+
+[functions.instagram-disconnect]
+verify_jwt = false
+
+[functions.instagram-meta]
+verify_jwt = false
