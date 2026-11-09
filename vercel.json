@@ -5,7 +5,7 @@
   "buildCommand": "bash scripts/vercel-build.sh",
   "outputDirectory": "build/web",
   "cleanUrls": true,
-  "rewrites": [{ "source": "/kit/:handle", "destination": "/index.html" }],
+  "rewrites": [{ "source": "/kit/:handle", "destination": "/" }],
   "headers": [
     {
       "source": "/(.*)",
