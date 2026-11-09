@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../backend/marketplace_models.dart';
+import '../../config/pricing.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../utils/format.dart';
 import '../../widgets/marketplace_widgets.dart';
 
-/// An invoice row. Brands see the amount they pay; creators see what they
-/// receive after Shor's fee.
+/// An invoice row. Brands see everything they pay, broken down; creators see
+/// what they receive, and whether Shor took a fee.
 class InvoiceCard extends StatelessWidget {
   const InvoiceCard({
     super.key,
@@ -63,7 +64,7 @@ class InvoiceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    money(brandView ? i.gross : i.net),
+                    money(brandView ? i.brandTotal : i.net),
                     style: AppText.sans(size: 16, weight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
@@ -72,13 +73,11 @@ class InvoiceCard extends StatelessWidget {
               ),
             ],
           ),
-          if (!brandView) ...[
-            const SizedBox(height: 6),
-            Text(
-              '${money(i.gross)} invoiced − ${money(i.fee)} Shor fee',
-              style: AppText.sans(size: 12, color: AppColors.textMuted),
-            ),
-          ],
+          const SizedBox(height: 6),
+          Text(
+            invoiceBreakdown(i, brandView: brandView),
+            style: AppText.sans(size: 12, color: AppColors.textMuted),
+          ),
           if ((i.description ?? '').isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
@@ -94,4 +93,21 @@ class InvoiceCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One line explaining how an invoice's amount is made up.
+String invoiceBreakdown(Invoice i, {required bool brandView}) {
+  String money(num v) => formatMoney(v, currency: i.currency);
+  if (brandView) {
+    if (i.brandFee == 0) return '${money(i.gross)} to the creator';
+    return [
+      '${money(i.gross)} to the creator',
+      '${money(i.brandFee)} Shor Protection',
+      if (i.brandFeeGst > 0) '${money(i.brandFeeGst)} GST',
+    ].join(' + ');
+  }
+  if (i.freeDeal) return 'No Shor fee on this deal';
+  final rate = i.creatorFeeRate ?? (i.gross == 0 ? 0 : i.fee / i.gross);
+  return '${money(i.gross)} agreed − ${money(i.fee)} Shor fee, '
+      '${Pricing.percent(rate)}';
 }

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'backend/auth_service.dart';
 import 'backend/supabase_config.dart';
 import 'screens/landing_page.dart';
+import 'screens/media_kit_page.dart';
 import 'screens/reset_password_page.dart';
 import 'screens/welcome_page.dart';
 import 'theme/app_theme.dart';
@@ -70,9 +71,15 @@ class _ShorAppState extends State<ShorApp> {
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      // The website keeps the marketing page; the phone apps open on the
-      // welcome screen (or straight into the app when signed in).
-      home: kIsWeb ? const LandingPage() : const StartGate(),
+      // The website keeps the marketing page (and public media kits at
+      // /kit/<handle>); the phone apps open on the welcome screen, or
+      // straight into the app when signed in.
+      home: kIsWeb
+          ? switch (mediaKitHandleFrom(Uri.base)) {
+              final handle? => MediaKitPage(handle: handle),
+              null => const LandingPage(),
+            }
+          : const StartGate(),
     );
   }
 }

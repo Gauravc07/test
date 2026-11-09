@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../backend/marketplace_service.dart';
 import '../../config/app_config.dart';
+import '../../widgets/reviews.dart';
 import '../../widgets/safety.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -45,6 +46,16 @@ class CampaignDetailPage extends StatelessWidget {
                     ...CampaignBrief.sections(
                       campaign,
                       creatorProfile: profile,
+                    ),
+                    const SizedBox(height: 20),
+                    ProfileReviews(
+                      userId: campaign.brandId,
+                      service: _service,
+                      title:
+                          'What creators say about ${campaign.brandDisplayName}',
+                      emptyMessage:
+                          'No reviews yet. Creators review brands after each '
+                          'completed deal on Shor.',
                     ),
                     const SizedBox(height: 20),
                     SafetyLinks(

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../backend/auth_service.dart';
 import '../../backend/marketplace_service.dart';
+import '../../config/pricing.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../utils/format.dart';
@@ -9,6 +11,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/marketplace_widgets.dart';
 import '../../widgets/responsive_grid.dart';
+import '../media_kit_page.dart';
 import '../settings/account_settings.dart';
 import '../shared/invoice_card.dart';
 
@@ -62,6 +65,8 @@ class CreatorProfileTab extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                 ],
+                MediaKitCard(profile: profile, service: _service),
+                const SizedBox(height: 14),
                 _CreatorProfileForm(
                   profile: profile,
                   email: account.email,
@@ -71,6 +76,7 @@ class CreatorProfileTab extends StatelessWidget {
                 _Earnings(invoices: invoices),
                 const SizedBox(height: 24),
                 AccountSettingsSection(
+                  pricingAudience: PlanAudience.creator,
                   auth: auth,
                   marketplace: service,
                   onSignOut: onSignOut,
@@ -80,6 +86,144 @@ class CreatorProfileTab extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+/// Turn the public media kit on or off, and share or preview its link.
+class MediaKitCard extends StatefulWidget {
+  const MediaKitCard({super.key, required this.profile, required this.service});
+
+  final CreatorProfileData profile;
+  final MarketplaceService service;
+
+  @override
+  State<MediaKitCard> createState() => _MediaKitCardState();
+}
+
+class _MediaKitCardState extends State<MediaKitCard> {
+  bool _busy = false;
+
+  // Kept here so switching doesn't reload the tab (and the profile form).
+  late bool _public = widget.profile.mediaKitPublic;
+
+  Future<void> _set(bool public) async {
+    if (_busy) return;
+    if (public) {
+      final ok = await confirmAction(
+        context,
+        title: 'Make your media kit public?',
+        message:
+            'Anyone with the link will see your Instagram followers, average '
+            'views and reach, audience age, gender and cities, your top recent '
+            'posts, your rates and your Shor reviews. You can turn it off at '
+            'any time.',
+        confirmLabel: 'Make public',
+      );
+      if (!ok) return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.service.setMediaKitPublic(public);
+      if (mounted) setState(() => _public = public);
+      if (mounted) {
+        showToast(
+          context,
+          public
+              ? 'Your media kit is live. Share the link with brands.'
+              : 'Your media kit is private again.',
+        );
+      }
+    } on MarketplaceFailure catch (e) {
+      if (mounted) showToast(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.profile;
+    final handle = (p.handle ?? '').trim();
+    final url = handle.isEmpty ? null : mediaKitUrl(handle);
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.badge_outlined, color: AppColors.accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Media kit',
+                      style: AppText.sans(size: 15, weight: FontWeight.w600),
+                    ),
+                    Text(
+                      _public
+                          ? 'Public. Put the link in your bio or send it to brands.'
+                          : 'A page with your verified numbers to send brands.',
+                      style: AppText.sans(
+                        size: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                key: const ValueKey('media-kit-public'),
+                value: _public,
+                onChanged: url == null || _busy ? null : _set,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (url == null)
+            const Note('Add a Shor handle below to get your media kit link.')
+          else ...[
+            SelectableText(
+              url,
+              style: AppText.sans(size: 13, color: AppColors.accent),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SmallButton(
+                  label: 'Preview',
+                  outlined: true,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          MediaKitPage(handle: handle, service: widget.service),
+                    ),
+                  ),
+                ),
+                if (_public)
+                  SmallButton(
+                    label: 'Copy link',
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: url));
+                      if (context.mounted) showToast(context, 'Link copied.');
+                    },
+                  ),
+              ],
+            ),
+          ],
+          if (!p.instagramVerified) ...[
+            const SizedBox(height: 10),
+            const Note(
+              'Connect Instagram so your kit shows verified views, reach and '
+              'audience. Without it, brands only see your profile and rates.',
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -344,6 +488,18 @@ class _Earnings extends StatelessWidget {
     num total(InvoiceStatus s) => invoices
         .where((i) => i.status == s)
         .fold<num>(0, (sum, i) => sum + i.net);
+    final freeLeft =
+        (Pricing.creatorFreeDeals -
+                invoices
+                    .where((i) => i.status != InvoiceStatus.rejected)
+                    .length)
+            .clamp(0, Pricing.creatorFreeDeals);
+    final feeNote = freeLeft > 0
+        ? 'Amounts are what you receive. You have $freeLeft of '
+              '${Pricing.creatorFreeDeals} free deals left with no Shor fee. '
+              'After that, Shor’s fee is ${Pricing.percent(Pricing.creatorFeeRate)}.'
+        : 'Amounts are what you receive, after Shor’s '
+              '${Pricing.percent(Pricing.creatorFeeRate)} fee.';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -370,7 +526,7 @@ class _Earnings extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        const Note('Amounts are after Shor’s 10% fee.'),
+        Note(feeNote),
         const SizedBox(height: 12),
         if (invoices.isEmpty)
           const EmptyState(

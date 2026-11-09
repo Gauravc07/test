@@ -10,6 +10,7 @@ import '../sections/footer_section.dart';
 import '../sections/hero_section.dart';
 import '../sections/how_it_works_section.dart';
 import '../sections/navigation_bar.dart';
+import '../sections/pricing_section.dart';
 import '../sections/testimonials_section.dart';
 import '../sections/value_proposition_section.dart';
 
@@ -81,6 +82,7 @@ class _LandingPageState extends State<LandingPage> {
     final section = switch (label) {
       'Features' => LandingSection.features,
       'How It Works' => LandingSection.howItWorks,
+      'Pricing' => LandingSection.pricing,
       _ => null,
     };
     if (section == null) return false;
@@ -112,6 +114,7 @@ class _LandingPageState extends State<LandingPage> {
                 anchor(LandingSection.features, const FeaturesSection()),
                 anchor(LandingSection.howItWorks, const HowItWorksSection()),
                 const DashboardPreviewSection(),
+                anchor(LandingSection.pricing, const PricingSection()),
                 anchor(
                   LandingSection.testimonials,
                   const TestimonialsSection(),

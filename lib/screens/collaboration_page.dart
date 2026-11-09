@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../backend/marketplace_service.dart';
 import '../config/app_config.dart';
+import '../config/pricing.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import '../utils/format.dart';
@@ -10,9 +11,11 @@ import '../utils/responsive.dart';
 import '../widgets/app_buttons.dart';
 import '../widgets/marketplace_widgets.dart';
 import '../widgets/responsive_grid.dart';
+import '../widgets/reviews.dart';
 import '../widgets/safety.dart';
 import 'brand/creator_profile_page.dart';
 import 'chat_page.dart';
+import 'shared/invoice_card.dart' show invoiceBreakdown;
 import 'creator/campaign_detail_page.dart';
 
 typedef _CollabData = ({
@@ -20,6 +23,7 @@ typedef _CollabData = ({
   List<Submission> submissions,
   Invoice? invoice,
   LivePost? live,
+  List<Review> reviews,
 });
 
 /// One creator on one campaign, from invite or application to payment.
@@ -47,11 +51,15 @@ class CollaborationPage extends StatelessWidget {
         if (p.collaborationId == collab.id) live = p;
       }
     }
+    final reviews = collab.status == CollabStatus.completed
+        ? await _service.collaborationReviews(collaborationId)
+        : const <Review>[];
     return (
       collab: collab,
       submissions: submissions,
       invoice: invoice,
       live: live,
+      reviews: reviews,
     );
   }
 
@@ -229,6 +237,15 @@ class _CollabViewState extends State<_CollabView> {
             ],
           ),
         ),
+        if (_collab.status == CollabStatus.completed) ...[
+          const SizedBox(height: 14),
+          CollaborationReviewCard(
+            collaboration: _collab,
+            reviews: widget.data.reviews,
+            otherName: _otherName,
+            service: widget.service,
+          ),
+        ],
         // Without Instagram connections there are no insights to show.
         if (widget.data.live != null &&
             (AppConfig.instagramEnabled || widget.data.live!.matched)) ...[
@@ -490,7 +507,6 @@ class _CollabViewState extends State<_CollabView> {
     final invoice = widget.data.invoice;
     final barter = _campaign?.isBarter ?? false;
     final amount = _collab.agreedAmount;
-    final fee = amount == null ? null : (amount * 0.10 * 100).round() / 100;
 
     switch (_collab.status) {
       case CollabStatus.invited:
@@ -709,16 +725,33 @@ class _CollabViewState extends State<_CollabView> {
             InvoiceStatus.pending => (
               title: 'Approve the invoice',
               message:
-                  'Invoice ${invoice.number} for '
-                  '${formatMoney(invoice.gross, currency: invoice.currency)}.',
+                  'Invoice ${invoice.number}: '
+                  '${formatMoney(invoice.brandTotal, currency: invoice.currency)} in total. '
+                  '${invoiceBreakdown(invoice, brandView: true)}.',
               actions: [
                 SmallButton(
                   label: 'Approve invoice',
-                  onPressed: () => _run(
-                    () =>
-                        widget.service.decideInvoice(invoice.id, approve: true),
-                    'Invoice approved.',
-                  ),
+                  onPressed: () async {
+                    final ok = await confirmAction(
+                      context,
+                      title:
+                          'Approve ${formatMoney(invoice.brandTotal, currency: invoice.currency)}?',
+                      message:
+                          '${invoiceBreakdown(invoice, brandView: true)}. '
+                          'Shor Protection covers verified stats, payment '
+                          'safety and your GST invoice.',
+                      confirmLabel: 'Approve',
+                    );
+                    if (ok) {
+                      await _run(
+                        () => widget.service.decideInvoice(
+                          invoice.id,
+                          approve: true,
+                        ),
+                        'Invoice approved.',
+                      );
+                    }
+                  },
                 ),
                 SmallButton(
                   label: 'Reject',
@@ -747,8 +780,8 @@ class _CollabViewState extends State<_CollabView> {
             InvoiceStatus.approved => (
               title: 'Invoice approved',
               message:
-                  '${formatMoney(invoice.gross, currency: invoice.currency)} is due to '
-                  '$_creatorName.',
+                  '${formatMoney(invoice.brandTotal, currency: invoice.currency)} is due: '
+                  '${invoiceBreakdown(invoice, brandView: true)}.',
               actions: const [],
             ),
             InvoiceStatus.paid => (
@@ -766,14 +799,33 @@ class _CollabViewState extends State<_CollabView> {
         final request = SmallButton(
           label: 'Request payment',
           onPressed: () async {
+            final FeeTerms terms;
+            try {
+              terms = await widget.service.feeTerms();
+            } catch (_) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Couldn’t load your fees. Try again.'),
+                  ),
+                );
+              }
+              return;
+            }
+            if (!mounted) return;
+            final q = terms.quote(amount ?? 0);
+            String money(num v) => formatMoney(v, currency: _collab.currency);
             final ok = await confirmAction(
               context,
-              title:
-                  'Request ${formatMoney(amount, currency: _collab.currency)}?',
-              message:
-                  'Shor sends an invoice to $_brandName. Shor’s 10% fee is '
-                  'deducted, so you receive '
-                  '${formatMoney(amount == null ? null : amount - fee!, currency: _collab.currency)}.',
+              title: 'Request ${money(q.amount)}?',
+              message: q.freeDeal
+                  ? 'Shor sends an invoice to $_brandName. This is one of your '
+                        '${terms.freeDealsTotal} free deals, so there’s no Shor '
+                        'fee and you receive the full ${money(q.creatorReceives)}.'
+                  : 'Shor sends an invoice to $_brandName. Shor’s '
+                        '${Pricing.percent(q.creatorFeeRate)} fee is '
+                        '${money(q.creatorFee)}, so you receive '
+                        '${money(q.creatorReceives)}.',
               confirmLabel: 'Send invoice',
             );
             if (ok) {
@@ -802,8 +854,8 @@ class _CollabViewState extends State<_CollabView> {
           InvoiceStatus.approved => (
             title: 'Invoice approved',
             message:
-                'You will receive ${formatMoney(invoice.net, currency: invoice.currency)} '
-                'after Shor’s fee.',
+                'You will receive ${formatMoney(invoice.net, currency: invoice.currency)}. '
+                '${invoiceBreakdown(invoice, brandView: false)}.',
             actions: const <Widget>[],
           ),
           InvoiceStatus.paid => (

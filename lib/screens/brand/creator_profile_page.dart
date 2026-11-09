@@ -9,6 +9,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/marketplace_widgets.dart';
 import '../../widgets/responsive_grid.dart';
+import '../../widgets/reviews.dart';
 import '../../widgets/safety.dart';
 import '../chat_page.dart';
 import 'creator_actions.dart';
@@ -100,6 +101,7 @@ class CreatorProfilePage extends StatelessWidget {
                                     tone: Tone.info,
                                     icon: Icons.verified,
                                   ),
+                                RatingLine(c.rating),
                                 if ((c.location ?? '').isNotEmpty)
                                   Text(
                                     c.location!,
@@ -164,12 +166,22 @@ class CreatorProfilePage extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                   ],
-                  if (c.niches.isNotEmpty)
+                  if (c.niches.isNotEmpty) ...[
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [for (final n in c.niches) StatusChip(n)],
                     ),
+                    const SizedBox(height: 14),
+                  ],
+                  ProfileReviews(
+                    userId: c.id,
+                    service: _service,
+                    title: 'Reviews from brands',
+                    emptyMessage:
+                        'No reviews yet. Brands review creators after each '
+                        'completed deal on Shor.',
+                  ),
                   const SizedBox(height: 28),
                   SafetyLinks(
                     reportLabel: 'Report creator',

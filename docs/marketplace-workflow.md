@@ -4,8 +4,8 @@ How brands and creators find each other and work together on Shor. The flow
 follows the shape of established Indian influencer platforms such as
 Kofluence: discovery, shortlists, campaign briefs, applications and invites
 with quotes, content review before posting, verified live posts, reports,
-invoices and chat. Pricing and commercial terms are Shor's own (10% fee on
-invoices), and the platform covers **Instagram only** for now.
+invoices and chat. Pricing and commercial terms are Shor's own (see
+[Fees](#fees)), and the platform covers **Instagram only** for now.
 
 ## The two journeys
 
@@ -46,7 +46,7 @@ invoices), and the platform covers **Instagram only** for now.
 5. **Post.** Publish on Instagram, then submit the post link. The app tells
    the creator that this shares the post's insights with the brand.
 6. **Get paid.** Request payment once the brand approves the post. The invoice
-   shows Shor's 10% fee and what the creator receives.
+   shows Shor's fee, if any, and what the creator receives.
 
 Both sides can message each other from any collaboration or profile. Chat
 updates live.
@@ -101,6 +101,24 @@ comment counts, so it reveals nothing private.
 - `lib/screens/home_shell.dart`: the signed-in home with creator or brand tabs.
 - `lib/screens/creator/`, `lib/screens/brand/`, `collaboration_page.dart`,
   `chat_page.dart`, `messages_tab.dart`: the screens.
+
+## Fees
+
+Set in `supabase/migrations/20261110000000_split_pricing.sql` and mirrored
+for previews in `lib/config/pricing.dart`.
+
+| Who | Fee | Notes |
+|---|---|---|
+| Brand | 7% "Shor Protection" on top of the creator's fee, plus 18% GST on that 7% | Shown in the campaign editor and before approving an invoice |
+| Creator | 0% on the first 3 invoices, then 5% | Rejected invoices don't use up a free deal |
+| Barter campaign | Flat ₹499 per campaign | Waived during early access. Not charged by the app yet |
+
+Rates are fixed on each invoice when it's raised. Invoices from before this
+change keep 10% from the creator and nothing from the brand.
+
+Plans on the pricing page (brand Starter, Growth, Pro and Creator Pro) are
+shown but not sold yet. The mobile apps show prices without a way to buy, so
+nothing points to a purchase outside the app stores.
 
 ## Not built yet
 

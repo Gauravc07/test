@@ -127,9 +127,11 @@ The database is Supabase project `tnevsivuemhlrlclpfuw`. Its schema lives in
 | `campaigns` | Campaigns a brand runs: budget, platforms, deliverables, metrics |
 | `collaborations` | One creator on one campaign, from invite or application to completion |
 | `shortlists`, `shortlist_items` | A brand's private lists of creators |
-| `invoices` | Invoices a creator raises for a collaboration. Shor keeps a 10% fee |
+| `invoices` | Invoices a creator raises for a collaboration, with the brand's 7% Shor Protection and the creator's fee (0% for 3 deals, then 5%) |
 | `transactions` | Payouts and refunds, written only by server code |
 | `conversations`, `messages` | Brand ↔ creator chat. New messages stream over Realtime |
+| `notifications` | In-app inbox written by triggers, emailed if unread. See [docs/engagement-features.md](docs/engagement-features.md) |
+| `reviews` | Double-blind 1–5 star ratings after a completed deal |
 
 Every table has row-level security turned on. Signed-out visitors can read
 nothing. Signed-in users see the creator and brand directories, live campaigns,

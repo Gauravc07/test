@@ -18,6 +18,7 @@ import 'creator/discover_campaigns_tab.dart';
 import 'creator/my_work_tab.dart';
 import 'instagram_dashboard_page.dart';
 import 'messages_tab.dart';
+import 'notifications_page.dart';
 import 'terms_page.dart';
 
 enum HomeTab {
@@ -325,6 +326,10 @@ class _RoleShellState extends State<_RoleShell> {
                     ],
                   ),
                 ),
+                trailing: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: NotificationBell(service: widget.marketplace),
+                ),
                 destinations: [
                   for (final t in _tabs)
                     NavigationRailDestination(
@@ -343,7 +348,29 @@ class _RoleShellState extends State<_RoleShell> {
     }
 
     return Scaffold(
-      body: SafeArea(bottom: false, child: body),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Container(
+              height: 52,
+              padding: const EdgeInsets.only(left: 16, right: 4),
+              decoration: const BoxDecoration(
+                color: AppColors.bgPrimary,
+                border: Border(bottom: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  const Wordmark(),
+                  const Spacer(),
+                  NotificationBell(service: widget.marketplace),
+                ],
+              ),
+            ),
+            Expanded(child: body),
+          ],
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: _selectIndex,

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/pricing.dart';
 import '../utils/format.dart';
 import 'marketplace_models.dart';
 
@@ -40,6 +41,9 @@ abstract interface class MarketplaceService {
   Future<void> saveCreatorProfile(CreatorProfileData data);
 
   Future<void> requestPayment(Collaboration collaboration);
+
+  /// The signed-in user's current deal fees, including free deals left.
+  Future<FeeTerms> feeTerms();
 
   // Brands ------------------------------------------------------------------
 
@@ -143,6 +147,42 @@ abstract interface class MarketplaceService {
   Future<void> unblock(String userId);
 
   Future<List<BlockedUser>> blockedUsers();
+
+  // Notifications -----------------------------------------------------------
+
+  /// The signed-in user's latest notifications, newest first, kept live.
+  Stream<List<AppNotification>> notifications();
+
+  /// Marks one notification read, or all of them when [id] is null.
+  Future<void> markNotificationsRead([String? id]);
+
+  Future<bool> emailNotifications();
+
+  Future<void> setEmailNotifications(bool enabled);
+
+  // Reviews -----------------------------------------------------------------
+
+  /// Reviews on a collaboration the signed-in user can see: always their
+  /// own, and the other side's once published.
+  Future<List<Review>> collaborationReviews(String collaborationId);
+
+  Future<void> submitReview(
+    String collaborationId, {
+    required int rating,
+    String? comment,
+  });
+
+  Future<RatingSummary> ratingSummary(String userId);
+
+  /// Published reviews of [userId], newest first.
+  Future<List<Review>> profileReviews(String userId);
+
+  // Media kit ---------------------------------------------------------------
+
+  /// A creator's public media kit, or null. Works without logging in.
+  Future<MediaKit?> mediaKit(String handle);
+
+  Future<void> setMediaKitPublic(bool public);
 }
 
 /// The app-wide marketplace service. Created on first use.
@@ -284,7 +324,9 @@ class SupabaseMarketplaceService implements MarketplaceService {
       _db.from('profiles').select('full_name').eq('id', uid).single(),
       _db
           .from('creator_profiles')
-          .select('handle, bio, niches, location, rate_min, rate_max')
+          .select(
+            'handle, bio, niches, location, rate_min, rate_max, media_kit_public',
+          )
           .eq('id', uid)
           .single(),
       _db
@@ -308,6 +350,7 @@ class SupabaseMarketplaceService implements MarketplaceService {
       instagramHandle: instagram?['handle'] as String?,
       followers: instagram?['followers'] as int?,
       instagramVerified: instagram?['verified'] as bool? ?? false,
+      mediaKitPublic: creator['media_kit_public'] as bool? ?? false,
     );
   });
 
@@ -330,6 +373,13 @@ class SupabaseMarketplaceService implements MarketplaceService {
           'rate_max': data.rateMax,
         })
         .eq('id', uid);
+  });
+
+  @override
+  Future<FeeTerms> feeTerms() => _guard(() async {
+    final rows = await _db.rpc('my_fee_terms') as List<dynamic>;
+    if (rows.isEmpty) return const FeeTerms();
+    return FeeTerms.fromRow(Map<String, dynamic>.from(rows.first as Map));
   });
 
   @override
@@ -916,6 +966,113 @@ class SupabaseMarketplaceService implements MarketplaceService {
           blockedAt: parseTimestamp(r['created_at']),
         ),
     ];
+  });
+
+  // Notifications -----------------------------------------------------------
+
+  @override
+  Stream<List<AppNotification>> notifications() {
+    final uid = currentUserId;
+    if (uid == null) return Stream.value(const []);
+    return _db
+        .from('notifications')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', uid)
+        .order('created_at', ascending: false)
+        .limit(50)
+        .map((rows) => rows.map(AppNotification.fromRow).toList());
+  }
+
+  @override
+  Future<void> markNotificationsRead([String? id]) => _guard(() async {
+    var q = _db
+        .from('notifications')
+        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('user_id', _uid)
+        .isFilter('read_at', null);
+    if (id != null) q = q.eq('id', id);
+    await q;
+  });
+
+  @override
+  Future<bool> emailNotifications() => _guard(() async {
+    final row = await _db
+        .from('profiles')
+        .select('email_notifications')
+        .eq('id', _uid)
+        .single();
+    return row['email_notifications'] as bool? ?? true;
+  });
+
+  @override
+  Future<void> setEmailNotifications(bool enabled) => _guard(() async {
+    await _db
+        .from('profiles')
+        .update({'email_notifications': enabled})
+        .eq('id', _uid);
+  });
+
+  // Reviews -----------------------------------------------------------------
+
+  @override
+  Future<List<Review>> collaborationReviews(String collaborationId) =>
+      _guard(() async {
+        final rows = await _db
+            .from('reviews')
+            .select()
+            .eq('collaboration_id', collaborationId);
+        return rows.map(Review.fromRow).toList();
+      });
+
+  @override
+  Future<void> submitReview(
+    String collaborationId, {
+    required int rating,
+    String? comment,
+  }) => _mutate(() async {
+    final text = comment?.trim() ?? '';
+    // No .select(): the other side's review may not be visible yet.
+    await _db.from('reviews').insert({
+      'collaboration_id': collaborationId,
+      'rating': rating,
+      'comment': text.isEmpty ? null : text,
+    });
+  });
+
+  @override
+  Future<RatingSummary> ratingSummary(String userId) => _guard(() async {
+    final rows =
+        await _db.rpc('rating_summary', params: {'p_user': userId}) as List;
+    return rows.isEmpty
+        ? const RatingSummary()
+        : RatingSummary.fromRow(Map<String, dynamic>.from(rows.first as Map));
+  });
+
+  @override
+  Future<List<Review>> profileReviews(String userId) => _guard(() async {
+    final rows =
+        await _db.rpc('profile_reviews', params: {'p_user': userId}) as List;
+    return [
+      for (final r in rows) Review.fromRow(Map<String, dynamic>.from(r as Map)),
+    ];
+  });
+
+  // Media kit ---------------------------------------------------------------
+
+  @override
+  Future<MediaKit?> mediaKit(String handle) => _guard(() async {
+    final kit = await _db.rpc('media_kit', params: {'p_handle': handle});
+    return kit is Map
+        ? MediaKit.fromJson(Map<String, dynamic>.from(kit))
+        : null;
+  });
+
+  @override
+  Future<void> setMediaKitPublic(bool public) => _mutate(() async {
+    await _db
+        .from('creator_profiles')
+        .update({'media_kit_public': public})
+        .eq('id', _uid);
   });
 
   /// People the signed-in user blocked; their content is hidden.

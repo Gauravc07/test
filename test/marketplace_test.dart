@@ -248,11 +248,33 @@ void main() {
 
       expect(find.text('Get paid'), findsOneWidget);
       await tapText(tester, 'Request payment');
-      expect(find.textContaining('you receive ₹10,800'), findsOneWidget);
+      expect(find.textContaining('one of your 3 free deals'), findsOneWidget);
+      expect(find.textContaining('the full ₹12,000'), findsOneWidget);
       await tapText(tester, 'Send invoice');
 
-      expect(market.invoicesById.values.single.gross, 12000);
+      final invoice = market.invoicesById.values.single;
+      expect(invoice.gross, 12000);
+      expect(invoice.fee, 0);
+      expect(invoice.brandTotal, 12000 + 840 + 151.2);
       expect(find.text('Payment requested'), findsOneWidget);
+    });
+
+    testWidgets('charges 5% once the free deals are used', (tester) async {
+      final market = FakeMarketplace(userId: creatorId);
+      for (var i = 0; i < 3; i++) {
+        await market.requestPayment(
+          market.addCollab(status: CollabStatus.completed),
+        );
+      }
+      final c = market.addCollab(status: CollabStatus.completed);
+      await pump(
+        tester,
+        CollaborationPage(collaborationId: c.id, service: market),
+      );
+
+      await tapText(tester, 'Request payment');
+      expect(find.textContaining('Shor’s 5% fee is ₹600'), findsOneWidget);
+      expect(find.textContaining('you receive ₹11,400'), findsOneWidget);
     });
   });
 

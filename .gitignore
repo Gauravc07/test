@@ -51,3 +51,9 @@ app.*.map.json
 *.jks
 *.keystore
 key.properties
+
+# Gradle output and Supabase CLI local state
+/android/build/
+supabase/.branches/
+supabase/.temp/
+.env.local

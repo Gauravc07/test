@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../backend/campaign_report.dart';
 import '../../backend/marketplace_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -7,6 +9,7 @@ import '../../utils/format.dart';
 import '../../utils/links.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/choice_toggle.dart';
+import '../../widgets/insight_charts.dart' show BarDatum, LabeledBars;
 import '../../widgets/marketplace_widgets.dart';
 import '../../widgets/responsive_grid.dart';
 import '../collaboration_page.dart';
@@ -18,6 +21,7 @@ typedef _CampaignData = ({
   Campaign campaign,
   List<Collaboration> collabs,
   List<LivePost> posts,
+  List<Invoice> invoices,
 });
 
 enum _Tab { applications, invited, hired, report }
@@ -43,7 +47,16 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
     final campaign = await _service.campaign(widget.campaignId);
     final collabs = await _service.campaignCollaborations(widget.campaignId);
     final posts = await _service.campaignLivePosts(widget.campaignId);
-    return (campaign: campaign, collabs: collabs, posts: posts);
+    final ids = {for (final c in collabs) c.id};
+    final invoices = (await _service.invoices())
+        .where((i) => ids.contains(i.collaborationId))
+        .toList();
+    return (
+      campaign: campaign,
+      collabs: collabs,
+      posts: posts,
+      invoices: invoices,
+    );
   }
 
   Future<void> _run(Future<void> Function() action, String done) async {
@@ -357,17 +370,16 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
   }
 
   List<Widget> _report(_CampaignData data) {
-    final hired = data.collabs.where((c) => c.status.isHired).toList();
     final byCollab = {for (final c in data.collabs) c.id: c};
+    final report = CampaignReport.build(
+      collaborations: data.collabs,
+      posts: data.posts,
+      invoices: data.invoices,
+      currency: data.campaign.currency,
+    );
     final posts = data.posts;
-    final synced = posts.where((p) => p.matched).toList();
-    int sum(int? Function(LivePost) f) =>
-        synced.fold<int>(0, (s, p) => s + (f(p) ?? 0));
-    final views = sum((p) => p.views);
-    final reach = sum((p) => p.reach);
-    final interactions = synced.fold<int>(0, (s, p) => s + p.interactions);
-    final spend = hired.fold<num>(0, (s, c) => s + (c.agreedAmount ?? 0));
-    final currency = data.campaign.currency;
+    final unsynced = report.postsLive - report.postsSynced;
+    final measured = report.rows.where((r) => r.views > 0).toList();
 
     return [
       ResponsiveGrid(
@@ -376,50 +388,87 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
         children: [
           MetricTile(
             label: 'Posts live',
-            value: '${posts.length}',
-            caption: '${hired.length} hired',
+            value: '${report.postsLive}',
+            caption: '${report.rows.length} hired',
           ),
-          MetricTile(label: 'Views', value: formatCompact(views)),
+          MetricTile(label: 'Views', value: formatCompact(report.views)),
           MetricTile(
             label: 'Reach',
-            value: formatCompact(reach),
+            value: formatCompact(report.reach),
             caption: 'Summed across posts',
           ),
-          MetricTile(label: 'Interactions', value: formatCompact(interactions)),
           MetricTile(
             label: 'Engagement',
-            value: reach == 0
+            value: report.engagementRate == null
                 ? '—'
-                : '${(interactions / reach * 100).toStringAsFixed(1)}%',
-            caption: 'Interactions ÷ reach',
+                : '${report.engagementRate!.toStringAsFixed(1)}%',
+            caption:
+                '${formatCompact(report.interactions)} interactions ÷ reach',
+          ),
+          MetricTile(label: 'Saves', value: formatCompact(report.saves)),
+          MetricTile(label: 'Shares', value: formatCompact(report.shares)),
+          MetricTile(
+            label: 'Total cost',
+            value: report.money(report.cost),
+            caption: 'Invoices incl. Shor fee and GST, else agreed fees',
           ),
           MetricTile(
-            label: 'Spend',
-            value: formatMoney(spend, currency: currency),
-            caption: 'Agreed with hired creators',
-          ),
-          MetricTile(
-            label: 'Cost per view',
-            value: views == 0
-                ? '—'
-                : formatMoney(spend / views, currency: currency),
-          ),
-          MetricTile(
-            label: 'Cost per 1K reach',
-            value: reach == 0
-                ? '—'
-                : formatMoney(spend / reach * 1000, currency: currency),
+            label: 'Cost per 1K views',
+            value: report.money(report.costPerThousandViews),
+            caption: 'Posts with results',
           ),
         ],
       ),
       const SizedBox(height: 12),
       Note(
-        posts.length > synced.length
+        unsynced > 0
             ? 'Numbers come from each creator’s Instagram and refresh daily. '
-                  '${posts.length - synced.length} post${posts.length - synced.length == 1 ? ' has' : 's have'} '
-                  'not synced yet.'
+                  '$unsynced post${unsynced == 1 ? ' has' : 's have'} not synced yet.'
             : 'Numbers come from each creator’s Instagram and refresh daily.',
       ),
+      if (report.rows.isNotEmpty) ...[
+        const SizedBox(height: 20),
+        SectionTitle(
+          'By creator',
+          trailing: SmallButton(
+            label: 'Copy as CSV',
+            outlined: true,
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: report.toCsv()));
+              if (mounted) {
+                showToast(
+                  context,
+                  'Report copied. Paste it into Excel or Google Sheets.',
+                );
+              }
+            },
+          ),
+        ),
+        if (measured.length > 1) ...[
+          SectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('SHARE OF VIEWS', style: AppText.label()),
+                const SizedBox(height: 8),
+                LabeledBars(
+                  labelWidth: 120,
+                  data: [for (final r in measured) BarDatum(r.name, r.views)],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        for (final r in report.rows) ...[
+          _CreatorResultRow(
+            row: r,
+            report: report,
+            onOpen: () => _openCollab(r.collaboration),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ],
       const SizedBox(height: 16),
       const SectionTitle('Live posts'),
       if (posts.isEmpty)
@@ -442,6 +491,83 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
           const SizedBox(height: 10),
         ],
     ];
+  }
+}
+
+/// One hired creator's numbers on the Report tab.
+class _CreatorResultRow extends StatelessWidget {
+  const _CreatorResultRow({
+    required this.row,
+    required this.report,
+    required this.onOpen,
+  });
+
+  final ReportRow row;
+  final CampaignReport report;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = row;
+    Widget stat(String label, String value) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value, style: AppText.sans(size: 15, weight: FontWeight.w700)),
+        Text(label, style: AppText.sans(size: 12, color: AppColors.textMuted)),
+      ],
+    );
+    return SectionCard(
+      onTap: onOpen,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                r.name,
+                style: AppText.sans(size: 15, weight: FontWeight.w600),
+              ),
+              if (identical(report.mostViews, r))
+                const StatusChip(
+                  'Most views',
+                  tone: Tone.success,
+                  icon: Icons.trending_up,
+                ),
+              if (identical(report.bestValue, r))
+                const StatusChip(
+                  'Best value',
+                  tone: Tone.success,
+                  icon: Icons.savings_outlined,
+                ),
+              if (r.post == null)
+                const StatusChip('Not posted yet')
+              else if (!r.synced)
+                const StatusChip('Insights not synced yet'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 22,
+            runSpacing: 10,
+            children: [
+              stat('views', r.synced ? formatCompact(r.views) : '—'),
+              stat('reach', r.synced ? formatCompact(r.reach) : '—'),
+              stat(
+                'engagement',
+                r.engagementRate == null
+                    ? '—'
+                    : '${r.engagementRate!.toStringAsFixed(1)}%',
+              ),
+              stat(r.invoiced ? 'invoiced' : 'agreed', report.money(r.cost)),
+              stat('per 1K views', report.money(r.costPerThousandViews)),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:shor/backend/auth_service.dart';
 import 'package:shor/config/app_config.dart';
+import 'package:shor/config/pricing.dart';
 import 'package:shor/backend/instagram_service.dart';
 import 'package:shor/backend/marketplace_service.dart';
 
@@ -376,8 +377,19 @@ class FakeMarketplace implements MarketplaceService {
   }
 
   @override
+  Future<FeeTerms> feeTerms() async => FeeTerms(
+    freeDealsLeft:
+        (Pricing.creatorFreeDeals -
+                invoicesById.values
+                    .where((i) => i.status != InvoiceStatus.rejected)
+                    .length)
+            .clamp(0, Pricing.creatorFreeDeals),
+  );
+
+  @override
   Future<void> requestPayment(Collaboration c) async {
     final gross = c.agreedAmount!;
+    final q = (await feeTerms()).quote(gross);
     final i = Invoice(
       id: _id('inv'),
       number: 'INV-2026-0000$_seq',
@@ -385,8 +397,11 @@ class FakeMarketplace implements MarketplaceService {
       brandId: c.brandId,
       creatorId: c.creatorId,
       gross: gross,
-      fee: gross * 0.1,
-      net: gross * 0.9,
+      fee: q.creatorFee,
+      net: q.creatorReceives,
+      creatorFeeRate: q.creatorFeeRate,
+      brandFee: q.brandFee,
+      brandFeeGst: q.brandFeeGst,
       status: InvoiceStatus.pending,
       campaignTitle: campaigns[c.campaignId]?.title,
       createdAt: DateTime.now(),
@@ -558,6 +573,9 @@ class FakeMarketplace implements MarketplaceService {
       gross: i.gross,
       fee: i.fee,
       net: i.net,
+      creatorFeeRate: i.creatorFeeRate,
+      brandFee: i.brandFee,
+      brandFeeGst: i.brandFeeGst,
       status: approve ? InvoiceStatus.approved : InvoiceStatus.rejected,
       campaignTitle: i.campaignTitle,
       createdAt: i.createdAt,
@@ -735,6 +753,152 @@ class FakeMarketplace implements MarketplaceService {
   @override
   Future<void> unblock(String userId) async {
     blocked.remove(userId);
+    _changed();
+  }
+
+  // Notifications -----------------------------------------------------------
+
+  final notes = <AppNotification>[];
+  final _noteStream = StreamController<List<AppNotification>>.broadcast();
+  bool emailOn = true;
+
+  /// Adds a notification for the signed-in user (test setup).
+  AppNotification addNotification(
+    String title, {
+    String kind = 'hired',
+    String? body,
+    String? collaborationId,
+    String? conversationId,
+  }) {
+    final n = AppNotification(
+      id: _id('note'),
+      kind: kind,
+      title: title,
+      body: body,
+      collaborationId: collaborationId,
+      conversationId: conversationId,
+      createdAt: DateTime.now(),
+    );
+    notes.insert(0, n);
+    _noteStream.add(List.of(notes));
+    return n;
+  }
+
+  @override
+  Stream<List<AppNotification>> notifications() async* {
+    yield List.of(notes);
+    yield* _noteStream.stream;
+  }
+
+  @override
+  Future<void> markNotificationsRead([String? id]) async {
+    for (var i = 0; i < notes.length; i++) {
+      if (id == null || notes[i].id == id) notes[i] = notes[i].markedRead();
+    }
+    _noteStream.add(List.of(notes));
+  }
+
+  @override
+  Future<bool> emailNotifications() async => emailOn;
+
+  @override
+  Future<void> setEmailNotifications(bool enabled) async => emailOn = enabled;
+
+  // Reviews -----------------------------------------------------------------
+
+  final reviews = <Review>[];
+
+  /// Follows the database's double-blind rule (without the 14-day expiry).
+  bool _published(Review r) => reviews.any(
+    (o) =>
+        o.reviewerId == r.revieweeId &&
+        o.id.split('|').first == r.id.split('|').first,
+  );
+
+  @override
+  Future<List<Review>> collaborationReviews(String collaborationId) async => [
+    for (final r in reviews)
+      if (r.id.startsWith('$collaborationId|') &&
+          (r.reviewerId == userId || _published(r)))
+        r,
+  ];
+
+  @override
+  Future<void> submitReview(
+    String collaborationId, {
+    required int rating,
+    String? comment,
+  }) async {
+    final c = collabs[collaborationId]!;
+    if (c.status != CollabStatus.completed) {
+      throw const MarketplaceFailure(
+        'you can leave a review once the collaboration is complete',
+      );
+    }
+    if (reviews.any((r) => r.id == '$collaborationId|$userId')) {
+      throw const MarketplaceFailure('That already exists.');
+    }
+    reviews.add(
+      Review(
+        id: '$collaborationId|$userId',
+        rating: rating,
+        comment: comment?.trim().isEmpty ?? true ? null : comment!.trim(),
+        reviewerId: userId,
+        revieweeId: userId == c.brandId ? c.creatorId : c.brandId,
+        reviewerName: userId == c.brandId
+            ? brandProfile.companyName
+            : creators[c.creatorId]?.displayName,
+        campaignTitle: campaigns[c.campaignId]?.title,
+        createdAt: DateTime.now(),
+      ),
+    );
+    _changed();
+  }
+
+  @override
+  Future<RatingSummary> ratingSummary(String userId) async {
+    final mine = [
+      for (final r in reviews)
+        if (r.revieweeId == userId && _published(r)) r,
+    ];
+    if (mine.isEmpty) return const RatingSummary();
+    return RatingSummary(
+      average: mine.fold<int>(0, (s, r) => s + r.rating) / mine.length,
+      count: mine.length,
+    );
+  }
+
+  @override
+  Future<List<Review>> profileReviews(String userId) async => [
+    for (final r in reviews.reversed)
+      if (r.revieweeId == userId && _published(r)) r,
+  ];
+
+  // Media kit ---------------------------------------------------------------
+
+  final kits = <String, MediaKit>{};
+  bool kitPublic = false;
+
+  @override
+  Future<MediaKit?> mediaKit(String handle) async =>
+      kits[handle.replaceFirst('@', '').toLowerCase()];
+
+  @override
+  Future<void> setMediaKitPublic(bool public) async {
+    kitPublic = public;
+    creatorProfile = CreatorProfileData(
+      fullName: creatorProfile.fullName,
+      handle: creatorProfile.handle,
+      bio: creatorProfile.bio,
+      niches: creatorProfile.niches,
+      location: creatorProfile.location,
+      rateMin: creatorProfile.rateMin,
+      rateMax: creatorProfile.rateMax,
+      instagramHandle: creatorProfile.instagramHandle,
+      followers: creatorProfile.followers,
+      instagramVerified: creatorProfile.instagramVerified,
+      mediaKitPublic: public,
+    );
     _changed();
   }
 

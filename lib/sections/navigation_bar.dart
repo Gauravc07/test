@@ -9,7 +9,7 @@ import '../utils/responsive.dart';
 import '../widgets/coming_soon.dart';
 
 /// Sections of the landing page that navigation links can scroll to.
-enum LandingSection { home, features, howItWorks, testimonials }
+enum LandingSection { home, features, howItWorks, pricing, testimonials }
 
 /// How far the fixed navigation reaches down the screen, so content and
 /// scroll targets can clear it.
@@ -36,7 +36,7 @@ const _pageGroups = <String, List<_NavLink>>{
   'Essentials': [
     _NavLink('About'),
     _NavLink('Integrations'),
-    _NavLink('Pricing'),
+    _NavLink('Pricing', section: LandingSection.pricing),
     _NavLink('Contact Us'),
   ],
   'Resources': [
@@ -177,15 +177,17 @@ class LandingNavigationBar extends StatelessWidget {
                                   ),
                                 ),
                                 SizedBox(width: gap),
-                                for (final label in [
-                                  'Integrations',
-                                  'Pricing',
-                                  'Contact Us',
+                                for (final link in const [
+                                  _NavLink('Integrations'),
+                                  _NavLink(
+                                    'Pricing',
+                                    section: LandingSection.pricing,
+                                  ),
+                                  _NavLink('Contact Us'),
                                 ]) ...[
                                   _NavTextLink(
-                                    label,
-                                    onTap: () =>
-                                        _handle(context, _NavLink(label)),
+                                    link.label,
+                                    onTap: () => _handle(context, link),
                                   ),
                                   SizedBox(width: gap),
                                 ],

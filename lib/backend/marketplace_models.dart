@@ -378,6 +378,7 @@ class CreatorSummary {
     this.followers,
     this.engagementRate,
     this.instagramVerified = false,
+    this.rating = const RatingSummary(),
   });
 
   factory CreatorSummary.fromRow(Map<String, dynamic> r) => CreatorSummary(
@@ -396,10 +397,17 @@ class CreatorSummary {
     followers: _int(r['instagram_followers']),
     engagementRate: _num(r['instagram_engagement'])?.toDouble(),
     instagramVerified: r['instagram_verified'] as bool? ?? false,
+    rating: RatingSummary(
+      average: _num(r['rating_average']),
+      count: _int(r['rating_count']) ?? 0,
+    ),
   );
 
   final String id;
   final String fullName;
+
+  /// Published reviews from brands.
+  final RatingSummary rating;
   final String? avatarUrl;
   final String? handle;
   final String? bio;
@@ -582,6 +590,10 @@ class Invoice {
     required this.fee,
     required this.net,
     required this.status,
+    this.creatorFeeRate,
+    this.brandFee = 0,
+    this.brandFeeGst = 0,
+    num? brandTotal,
     this.currency = 'INR',
     this.description,
     this.dueDate,
@@ -590,7 +602,7 @@ class Invoice {
     this.paidAt,
     this.campaignTitle,
     this.counterpartName,
-  });
+  }) : brandTotal = brandTotal ?? gross + brandFee + brandFeeGst;
 
   factory Invoice.fromRow(Map<String, dynamic> r, {String? counterpartName}) {
     final collab = r['collaborations'];
@@ -605,6 +617,10 @@ class Invoice {
       gross: _num(r['gross_amount']) ?? 0,
       fee: _num(r['platform_fee']) ?? 0,
       net: _num(r['net_amount']) ?? 0,
+      creatorFeeRate: _num(r['creator_fee_rate']),
+      brandFee: _num(r['brand_fee']) ?? 0,
+      brandFeeGst: _num(r['brand_fee_gst']) ?? 0,
+      brandTotal: _num(r['brand_total']),
       status: fromDb(InvoiceStatus.values, r['status'], InvoiceStatus.pending),
       currency: r['currency'] as String? ?? 'INR',
       description: r['description'] as String?,
@@ -630,14 +646,29 @@ class Invoice {
   final String? brandId;
   final String? creatorId;
 
-  /// What the brand pays.
+  /// The creator's agreed fee for the deal.
   final num gross;
 
-  /// Shor's fee, deducted from the creator's payout.
+  /// Shor's fee, deducted from the creator's payout. 0 on a free deal.
   final num fee;
 
   /// What the creator receives.
   final num net;
+
+  /// Creator fee rate fixed when the invoice was raised. Null if unknown.
+  final num? creatorFeeRate;
+
+  /// "Shor Protection", paid by the brand on top of [gross].
+  final num brandFee;
+
+  /// GST on [brandFee].
+  final num brandFeeGst;
+
+  /// Everything the brand pays.
+  final num brandTotal;
+
+  /// No Shor fee for the creator on this deal.
+  bool get freeDeal => fee == 0;
   final InvoiceStatus status;
   final String currency;
   final String? description;
@@ -819,6 +850,7 @@ class CreatorProfileData {
     this.instagramHandle,
     this.followers,
     this.instagramVerified = false,
+    this.mediaKitPublic = false,
   });
 
   final String fullName;
@@ -833,6 +865,9 @@ class CreatorProfileData {
   final String? instagramHandle;
   final int? followers;
   final bool instagramVerified;
+
+  /// Read-only here: changed with [MarketplaceService.setMediaKitPublic].
+  final bool mediaKitPublic;
 }
 
 /// The signed-in brand's editable profile.
@@ -956,6 +991,303 @@ class BlockedUser {
   final String id;
   final String name;
   final DateTime? blockedAt;
+}
+
+// Notifications ---------------------------------------------------------------
+
+/// Something that happened that the signed-in user should know about.
+/// Written by database triggers; see the notifications migration.
+class AppNotification {
+  const AppNotification({
+    required this.id,
+    required this.kind,
+    required this.title,
+    this.body,
+    this.collaborationId,
+    this.conversationId,
+    this.readAt,
+    this.createdAt,
+  });
+
+  factory AppNotification.fromRow(Map<String, dynamic> r) => AppNotification(
+    id: r['id'] as String,
+    kind: r['kind'] as String? ?? '',
+    title: r['title'] as String? ?? '',
+    body: r['body'] as String?,
+    collaborationId: r['collaboration_id'] as String?,
+    conversationId: r['conversation_id'] as String?,
+    readAt: parseTimestamp(r['read_at']),
+    createdAt: parseTimestamp(r['created_at']),
+  );
+
+  final String id;
+
+  /// e.g. invited, applied, hired, draft_submitted, invoice_raised, message.
+  final String kind;
+  final String title;
+  final String? body;
+  final String? collaborationId;
+  final String? conversationId;
+  final DateTime? readAt;
+  final DateTime? createdAt;
+
+  bool get unread => readAt == null;
+
+  AppNotification markedRead() => AppNotification(
+    id: id,
+    kind: kind,
+    title: title,
+    body: body,
+    collaborationId: collaborationId,
+    conversationId: conversationId,
+    readAt: readAt ?? DateTime.now(),
+    createdAt: createdAt,
+  );
+}
+
+// Reviews ---------------------------------------------------------------------
+
+/// A 1–5 star rating one side of a completed deal gave the other.
+class Review {
+  const Review({
+    required this.id,
+    required this.rating,
+    this.comment,
+    this.createdAt,
+    this.reviewerId,
+    this.revieweeId,
+    this.reviewerName,
+    this.campaignTitle,
+  });
+
+  factory Review.fromRow(Map<String, dynamic> r) => Review(
+    id: r['id'] as String,
+    rating: _int(r['rating']) ?? 0,
+    comment: r['comment'] as String?,
+    createdAt: parseTimestamp(r['created_at']),
+    reviewerId: r['reviewer_id'] as String?,
+    revieweeId: r['reviewee_id'] as String?,
+    reviewerName: r['reviewer_name'] as String?,
+    campaignTitle: r['campaign_title'] as String?,
+  );
+
+  final String id;
+  final int rating;
+  final String? comment;
+  final DateTime? createdAt;
+  final String? reviewerId;
+  final String? revieweeId;
+  final String? reviewerName;
+  final String? campaignTitle;
+}
+
+/// Average of someone's published reviews.
+class RatingSummary {
+  const RatingSummary({this.average, this.count = 0});
+
+  factory RatingSummary.fromRow(Map<String, dynamic>? r) => r == null
+      ? const RatingSummary()
+      : RatingSummary(
+          average: _num(r['average']),
+          count: _int(r['count']) ?? 0,
+        );
+
+  final num? average;
+  final int count;
+
+  bool get hasReviews => count > 0 && average != null;
+
+  /// "4.8 · 12 reviews", or "No reviews yet".
+  String get label => hasReviews
+      ? '${average!.toStringAsFixed(1)} · $count review${count == 1 ? '' : 's'}'
+      : 'No reviews yet';
+}
+
+/// Days a one-sided review stays hidden. Mirrors review_blind_days().
+const reviewBlindDays = 14;
+
+// Media kit -------------------------------------------------------------------
+
+class MediaKitPost {
+  const MediaKitPost({
+    required this.permalink,
+    this.imageUrl,
+    this.isReel = false,
+    this.views,
+    this.reach,
+    this.likes,
+    this.comments,
+    this.postedAt,
+  });
+
+  factory MediaKitPost.fromJson(Map<String, dynamic> j) => MediaKitPost(
+    permalink: j['permalink'] as String? ?? '',
+    imageUrl: j['image_url'] as String?,
+    isReel: j['media_product_type'] == 'REELS' || j['media_type'] == 'VIDEO',
+    views: _int(j['views']),
+    reach: _int(j['reach']),
+    likes: _int(j['likes']),
+    comments: _int(j['comments']),
+    postedAt: parseTimestamp(j['posted_at']),
+  );
+
+  final String permalink;
+  final String? imageUrl;
+  final bool isReel;
+  final int? views;
+  final int? reach;
+  final int? likes;
+  final int? comments;
+  final DateTime? postedAt;
+}
+
+/// A creator's public media kit, from the media_kit() database function.
+class MediaKit {
+  const MediaKit({
+    required this.creatorId,
+    required this.handle,
+    required this.name,
+    this.avatarUrl,
+    this.bio,
+    this.niches = const [],
+    this.location,
+    this.rateMin,
+    this.rateMax,
+    this.currency = 'INR',
+    this.isPublic = false,
+    this.instagramUsername,
+    this.instagramUrl,
+    this.followers,
+    this.verified = false,
+    this.engagementRate,
+    this.syncedAt,
+    this.postsAnalysed = 0,
+    this.avgViews,
+    this.avgReach,
+    this.avgInteractions,
+    this.recentEngagementRate,
+    this.topPosts = const [],
+    this.audience = const {},
+    this.dealsCompleted = 0,
+    this.rating = const RatingSummary(),
+    this.reviews = const [],
+  });
+
+  factory MediaKit.fromJson(Map<String, dynamic> j) {
+    final ig = j['instagram'] is Map
+        ? Map<String, dynamic>.from(j['instagram'] as Map)
+        : null;
+    final stats = j['stats'] is Map
+        ? Map<String, dynamic>.from(j['stats'] as Map)
+        : const <String, dynamic>{};
+    final audience = <String, List<BarDatumData>>{};
+    if (j['audience'] is Map) {
+      for (final e in (j['audience'] as Map).entries) {
+        audience[e.key.toString()] = [
+          for (final item in (e.value as List? ?? const []))
+            BarDatumData(
+              (item as Map)['label']?.toString() ?? '',
+              _num(item['share']) ?? 0,
+            ),
+        ];
+      }
+    }
+    return MediaKit(
+      creatorId: j['id'] as String? ?? '',
+      handle: j['handle'] as String? ?? '',
+      name: j['name'] as String? ?? '',
+      avatarUrl: j['avatar_url'] as String?,
+      bio: j['bio'] as String?,
+      niches: _strings(j['niches']),
+      location: j['location'] as String?,
+      rateMin: _num(j['rate_min']),
+      rateMax: _num(j['rate_max']),
+      currency: j['currency'] as String? ?? 'INR',
+      isPublic: j['is_public'] as bool? ?? false,
+      instagramUsername: ig?['username'] as String?,
+      instagramUrl: ig?['url'] as String?,
+      followers: _int(ig?['followers']),
+      verified: ig?['verified'] as bool? ?? false,
+      engagementRate: _num(ig?['engagement_rate']),
+      syncedAt: parseTimestamp(ig?['synced_at']),
+      postsAnalysed: _int(stats['posts']) ?? 0,
+      avgViews: _int(stats['avg_views']),
+      avgReach: _int(stats['avg_reach']),
+      avgInteractions: _int(stats['avg_interactions']),
+      recentEngagementRate: _num(stats['engagement_rate']),
+      topPosts: [
+        for (final p in (j['top_posts'] as List? ?? const []))
+          MediaKitPost.fromJson(Map<String, dynamic>.from(p as Map)),
+      ],
+      audience: audience,
+      dealsCompleted: _int(j['deals_completed']) ?? 0,
+      rating: RatingSummary.fromRow(
+        j['rating'] is Map
+            ? Map<String, dynamic>.from(j['rating'] as Map)
+            : null,
+      ),
+      reviews: [
+        for (final r in (j['reviews'] as List? ?? const []))
+          Review.fromRow(Map<String, dynamic>.from(r as Map)),
+      ],
+    );
+  }
+
+  final String creatorId;
+  final String handle;
+  final String name;
+  final String? avatarUrl;
+  final String? bio;
+  final List<String> niches;
+  final String? location;
+  final num? rateMin;
+  final num? rateMax;
+  final String currency;
+
+  /// False when the owner is previewing a kit they haven't published.
+  final bool isPublic;
+
+  final String? instagramUsername;
+  final String? instagramUrl;
+  final int? followers;
+
+  /// Numbers synced from Instagram's API, not typed in.
+  final bool verified;
+  final num? engagementRate;
+  final DateTime? syncedAt;
+
+  /// Averages over posts from the last 90 days.
+  final int postsAnalysed;
+  final int? avgViews;
+  final int? avgReach;
+  final int? avgInteractions;
+  final num? recentEngagementRate;
+
+  final List<MediaKitPost> topPosts;
+
+  /// Top values per breakdown (gender, age, city, country) as % shares.
+  final Map<String, List<BarDatumData>> audience;
+
+  final int dealsCompleted;
+  final RatingSummary rating;
+  final List<Review> reviews;
+
+  String get displayName => name.trim().isNotEmpty ? name.trim() : '@$handle';
+
+  String get rateLabel => CreatorSummary(
+    id: creatorId,
+    rateMin: rateMin,
+    rateMax: rateMax,
+    currency: currency,
+  ).rateLabel;
+}
+
+/// A labelled share, e.g. ("Pune", 40.0).
+class BarDatumData {
+  const BarDatumData(this.label, this.share);
+
+  final String label;
+  final num share;
 }
 
 /// A failure worth showing to the user as-is.

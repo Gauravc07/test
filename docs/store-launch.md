@@ -62,10 +62,13 @@ Checked against Apple's App Review Guidelines and Google Play policy on
    highlighted placeholder (legal name, address, grievance officer, city) and
    rewrite Terms §4 to match how money actually moves. Have a lawyer review
    both pages.
-2. **Payments decision.** The app says Shor deducts a 10% fee, but no payment
-   gateway is connected. Before launch, either connect one (e.g. Razorpay Route
-   for marketplace payouts) or change the fee wording in the app and Terms.
-   Reviewers and users will read these screens.
+2. **Payments decision.** The app shows split fees (7% Shor Protection for
+   brands, 5% for creators after 3 free deals), but no payment gateway is
+   connected. Before launch, either connect one (Razorpay Route, see
+   [payments-razorpay.md](payments-razorpay.md)) or keep the "settle directly"
+   wording in the app and Terms. Reviewers and users will read these screens.
+   If paid plans are ever sold inside the iOS app, Apple requires in-app
+   purchase for them.
 3. **Publish the website.** Push this branch so Vercel builds with
    `vercel.json` (it installs Flutter 3.38.9 and builds `build/web`). Check that
    these load:

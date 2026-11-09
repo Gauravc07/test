@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../backend/marketplace_service.dart';
+import '../../config/pricing.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../utils/format.dart';
@@ -305,6 +306,14 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
                           return _optionalNumber(value, min: 0);
                         },
                       ),
+                      const SizedBox(height: 8),
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _payout,
+                        builder: (context, value, _) {
+                          final amount = num.tryParse(value.text.trim());
+                          return Note(campaignCostNote(amount));
+                        },
+                      ),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Let creators quote their own price'),
@@ -315,6 +324,7 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
                         onChanged: (v) => setState(() => _d.acceptsQuotes = v),
                       ),
                     ],
+                    if (barter) const Note(barterFeeNote),
                     if (product) ...[
                       const SizedBox(height: 8),
                       TextFormField(
@@ -527,3 +537,21 @@ class _DateField extends StatelessWidget {
     );
   }
 }
+
+/// What one creator costs the brand, for the payout preview.
+String campaignCostNote(num? amount) {
+  if (amount == null || amount <= 0) {
+    return 'Brands pay the creator’s fee plus '
+        '${Pricing.percent(Pricing.brandFeeRate)} Shor Protection and GST on '
+        'that fee. No other charges.';
+  }
+  final q = DealQuote.of(amount);
+  return 'Each creator costs you ${formatMoney(q.brandPays)} in total: '
+      '${formatMoney(q.amount)} to the creator + ${formatMoney(q.brandFee)} '
+      'Shor Protection + ${formatMoney(q.brandFeeGst)} GST.';
+}
+
+const barterFeeNote = Pricing.barterFeeWaived
+    ? 'Barter campaigns are free during early access. Later they cost a flat '
+          '₹${Pricing.barterCampaignFee} per campaign.'
+    : 'Barter campaigns cost a flat ₹${Pricing.barterCampaignFee} per campaign.';

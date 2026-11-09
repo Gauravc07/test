@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../backend/auth_service.dart';
 import '../../backend/marketplace_service.dart';
 import '../../config/app_config.dart';
+import '../../config/pricing.dart';
+import '../../sections/pricing_section.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../utils/format.dart';
@@ -18,9 +20,13 @@ class AccountSettingsSection extends StatelessWidget {
     this.auth,
     this.marketplace,
     required this.onSignOut,
+    this.pricingAudience = PlanAudience.brand,
   });
 
   final AuthService? auth;
+
+  /// Which plans "Plans and pricing" opens on.
+  final PlanAudience pricingAudience;
   final MarketplaceService? marketplace;
   final VoidCallback onSignOut;
 
@@ -61,6 +67,16 @@ class AccountSettingsSection extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: Column(
             children: [
+              EmailNotificationsSwitch(service: marketplace),
+              tile(
+                Icons.sell_outlined,
+                'Plans and pricing',
+                () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => PricingPage(audience: pricingAudience),
+                  ),
+                ),
+              ),
               tile(
                 Icons.help_outline,
                 'Help and support',
@@ -106,6 +122,77 @@ class AccountSettingsSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Turns notification emails on or off. In-app notifications always show.
+class EmailNotificationsSwitch extends StatefulWidget {
+  const EmailNotificationsSwitch({super.key, this.service});
+
+  final MarketplaceService? service;
+
+  @override
+  State<EmailNotificationsSwitch> createState() =>
+      _EmailNotificationsSwitchState();
+}
+
+class _EmailNotificationsSwitchState extends State<EmailNotificationsSwitch> {
+  MarketplaceService get _service => widget.service ?? marketplaceService;
+  bool? _on;
+
+  @override
+  void initState() {
+    super.initState();
+    _service.emailNotifications().then(
+      (v) {
+        if (mounted) setState(() => _on = v);
+      },
+      onError: (_) {
+        if (mounted) setState(() => _on = true);
+      },
+    );
+  }
+
+  Future<void> _set(bool v) async {
+    final before = _on;
+    setState(() => _on = v);
+    try {
+      await _service.setEmailNotifications(v);
+      if (mounted) {
+        showToast(
+          context,
+          v
+              ? 'We’ll email you about anything you miss.'
+              : 'Emails off. You’ll still see notifications in the app.',
+        );
+      }
+    } on MarketplaceFailure catch (e) {
+      if (!mounted) return;
+      setState(() => _on = before);
+      showToast(context, e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      key: const ValueKey('email-notifications'),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      secondary: const Icon(
+        Icons.notifications_active_outlined,
+        color: AppColors.textSecondary,
+      ),
+      title: Text(
+        'Email notifications',
+        style: AppText.sans(size: 15, weight: FontWeight.w500),
+      ),
+      subtitle: Text(
+        'Invites, approvals, invoices and messages you haven’t seen within a few minutes',
+        style: AppText.sans(size: 13, color: AppColors.textMuted),
+      ),
+      value: _on ?? true,
+      onChanged: _on == null ? null : _set,
     );
   }
 }
