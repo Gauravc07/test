@@ -76,6 +76,15 @@ jobs:
           name: app-release-unsigned-check
           path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 7
+      # An APK to install directly on a phone for testing. Debug-signed (no
+      # key.properties in CI), so it installs from a file but can't go to
+      # Google Play.
+      - run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shor-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
 
   ios:
     name: iOS build (no signing)
