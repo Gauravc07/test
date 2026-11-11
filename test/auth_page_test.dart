@@ -167,8 +167,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // Brand tabs: campaigns first.
-    expect(find.text('New campaign'), findsOneWidget);
-    expect(find.text('Creators'), findsWidgets);
+    // Brand Home: the next step, and a Creators tab in the bottom bar.
+    expect(find.text('New campaign'), findsWidgets);
+    expect(find.byTooltip('Creators'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 

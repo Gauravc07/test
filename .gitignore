@@ -57,3 +57,6 @@ key.properties
 supabase/.branches/
 supabase/.temp/
 .env.local
+
+# Design-review screenshots (tool/screenshots)
+/tool/screenshots/out/

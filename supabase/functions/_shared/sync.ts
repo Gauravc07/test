@@ -69,6 +69,9 @@ export async function syncAccount(admin: SupabaseClient, accountId: string): Pro
       sync_started_at: null,
       status: "active",
     }).eq("id", accountId);
+    // Quality score and (with consent) audience for brand search.
+    const { error: statsError } = await admin.rpc("refresh_creator_stats", { p_creator: creatorId });
+    if (statsError) warnings.push(`stats: ${statsError.message}`);
     return { status: "synced", warnings };
   } catch (e) {
     const authFailed = e instanceof GraphError && e.isAuthError;

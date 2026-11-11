@@ -63,7 +63,7 @@ class _SolidButtonState extends State<SolidButton> {
         padding: widget.padding,
         decoration: BoxDecoration(
           color: _hovered ? widget.hoverColor : widget.color,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -143,7 +143,7 @@ class _OutlineActionButtonState extends State<OutlineActionButton> {
           color: _hovered
               ? hoverFill
               : (widget.onDark ? AppColors.white(0.04) : AppColors.bgCard),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: _hovered && !widget.onDark ? AppColors.navy : border,
           ),

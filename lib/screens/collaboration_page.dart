@@ -16,6 +16,7 @@ import '../widgets/safety.dart';
 import 'brand/creator_profile_page.dart';
 import 'chat_page.dart';
 import 'shared/invoice_card.dart' show invoiceBreakdown;
+import 'shared/sales_tracking_card.dart';
 import 'creator/campaign_detail_page.dart';
 
 typedef _CollabData = ({
@@ -207,13 +208,12 @@ class _CollabViewState extends State<_CollabView> {
       children: [
         _header(),
         const SizedBox(height: 14),
-        if (_showProgress) ...[_progress(), const SizedBox(height: 14)],
         SectionCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('NEXT STEP', style: AppText.label(color: AppColors.accent)),
-              const SizedBox(height: 6),
+              const TagPill('Next step', icon: Icons.auto_awesome),
+              const SizedBox(height: 12),
               Text(next.title, style: AppText.heading(20)),
               const SizedBox(height: 6),
               Text(
@@ -237,6 +237,7 @@ class _CollabViewState extends State<_CollabView> {
             ],
           ),
         ),
+        if (_showProgress) ...[const SizedBox(height: 14), _progress()],
         if (_collab.status == CollabStatus.completed) ...[
           const SizedBox(height: 14),
           CollaborationReviewCard(
@@ -259,6 +260,14 @@ class _CollabViewState extends State<_CollabView> {
             _submissionCard(s),
             const SizedBox(height: 10),
           ],
+        ],
+        if (_collab.status.isHired) ...[
+          const SizedBox(height: 14),
+          SalesTrackingCard(
+            collaboration: _collab,
+            isBrand: _isBrand,
+            service: widget.service,
+          ),
         ],
         const SizedBox(height: 12),
         _terms(),
@@ -442,50 +451,120 @@ class _CollabViewState extends State<_CollabView> {
       ('Approved', _collab.status == CollabStatus.completed),
       if (!barter) ('Paid', widget.data.invoice?.status == InvoiceStatus.paid),
     ];
+    final done = steps.where((s) => s.$2).length;
+    final current = steps.indexWhere((s) => !s.$2);
     return SectionCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < steps.length; i++) ...[
-            if (i > 0)
-              const Icon(
-                Icons.chevron_right,
-                size: 16,
-                color: AppColors.textMuted,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Progress',
+                  style: AppText.sans(size: 16, weight: FontWeight.w600),
+                ),
               ),
+              Text(
+                'Step ${current < 0 ? steps.length : current + 1} of ${steps.length}',
+                style: AppText.sans(size: 13, color: AppColors.textMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: done / steps.length,
+              minHeight: 6,
+              backgroundColor: AppColors.fill,
+              color: AppColors.navy,
+            ),
+          ),
+          const SizedBox(height: 16),
+          for (var i = 0; i < steps.length; i++)
             Semantics(
-              label: '${steps[i].$1}: ${steps[i].$2 ? 'done' : 'not yet'}',
+              label:
+                  '${steps[i].$1}: ${steps[i].$2
+                      ? 'done'
+                      : i == current
+                      ? 'up next'
+                      : 'not yet'}',
               excludeSemantics: true,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    steps[i].$2
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    size: 16,
-                    color: steps[i].$2
-                        ? AppColors.accent
-                        : AppColors.borderStrong,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    steps[i].$1,
-                    style: AppText.sans(
-                      size: 13,
-                      weight: steps[i].$2 ? FontWeight.w600 : FontWeight.w400,
-                      color: steps[i].$2
-                          ? AppColors.textPrimary
-                          : AppColors.textMuted,
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 3),
+                          Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: steps[i].$2
+                                  ? AppColors.navy
+                                  : Colors.white,
+                              border: Border.all(
+                                color: steps[i].$2 || i == current
+                                    ? AppColors.navy
+                                    : AppColors.borderStrong,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                          if (i < steps.length - 1)
+                            Expanded(
+                              child: Container(
+                                width: 2,
+                                color: steps[i + 1].$2
+                                    ? AppColors.navy
+                                    : AppColors.border,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: Text(
+                          steps[i].$1,
+                          style: AppText.sans(
+                            size: 14,
+                            weight: steps[i].$2 || i == current
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: steps[i].$2 || i == current
+                                ? AppColors.textPrimary
+                                : AppColors.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      steps[i].$2
+                          ? 'Done'
+                          : i == current
+                          ? 'Up next'
+                          : '',
+                      style: AppText.sans(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: steps[i].$2
+                            ? const Color(0xFF1E6B2E)
+                            : AppColors.accent,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
         ],
       ),
     );

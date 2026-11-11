@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/app_config.dart';
 import '../config/pricing.dart';
 import '../utils/format.dart';
 import 'marketplace_models.dart';
+import 'supabase_config.dart';
 
 export 'marketplace_models.dart';
 
@@ -183,7 +185,42 @@ abstract interface class MarketplaceService {
   Future<MediaKit?> mediaKit(String handle);
 
   Future<void> setMediaKitPublic(bool public);
+
+  /// Lets brands search and see the creator's audience breakdown.
+  Future<void> setShareAudience(bool share);
+
+  // Sales tracking ----------------------------------------------------------
+
+  /// Tracked-link clicks, attributed orders and revenue per collaboration.
+  Future<List<SalesRow>> campaignSales(String campaignId);
+
+  /// Brand only. Null clears the code.
+  Future<void> setDiscountCode(String collaborationId, String? code);
+
+  Future<List<StoreConnection>> storeConnections();
+
+  Future<StoreConnection> saveStoreConnection({
+    required StorePlatform platform,
+    required String storeUrl,
+    required String webhookSecret,
+  });
+
+  Future<void> deleteStoreConnection(String id);
 }
+
+/// A creator's tracked link. In production the website proxies /go/* to
+/// the redirect function; locally the function is called directly.
+String trackedLinkUrl(String code) {
+  final api = SupabaseConfig.url;
+  final local = api.contains('127.0.0.1') || api.contains('localhost');
+  return local
+      ? '$api/functions/v1/go/$code'
+      : '${AppConfig.websiteUrl}/go/$code';
+}
+
+/// Where a brand points their store's order webhook.
+String storeWebhookUrl(String connectionId) =>
+    '${SupabaseConfig.url}/functions/v1/store-webhook?c=$connectionId';
 
 /// The app-wide marketplace service. Created on first use.
 MarketplaceService marketplaceService = SupabaseMarketplaceService();
@@ -325,7 +362,8 @@ class SupabaseMarketplaceService implements MarketplaceService {
       _db
           .from('creator_profiles')
           .select(
-            'handle, bio, niches, location, rate_min, rate_max, media_kit_public',
+            'handle, bio, niches, location, rate_min, rate_max, '
+            'media_kit_public, share_audience',
           )
           .eq('id', uid)
           .single(),
@@ -351,6 +389,7 @@ class SupabaseMarketplaceService implements MarketplaceService {
       followers: instagram?['followers'] as int?,
       instagramVerified: instagram?['verified'] as bool? ?? false,
       mediaKitPublic: creator['media_kit_public'] as bool? ?? false,
+      shareAudience: creator['share_audience'] as bool? ?? false,
     );
   });
 
@@ -521,6 +560,27 @@ class SupabaseMarketplaceService implements MarketplaceService {
           q = q.lt('instagram_followers', filter.tier.max!);
         }
         if (filter.verifiedOnly) q = q.eq('instagram_verified', true);
+        if (filter.minQuality > 0) {
+          q = q.gte('quality_score', filter.minQuality);
+        }
+        switch (filter.audience) {
+          case AudienceFilter.any:
+            break;
+          case AudienceFilter.mostlyWomen:
+            q = q.gte('aud_female_share', 60);
+          case AudienceFilter.mostlyMen:
+            q = q.lte('aud_female_share', 40);
+          case AudienceFilter.young:
+            q = q.gte('aud_age_18_34_share', 60);
+          case AudienceFilter.india:
+            q = q.gte('aud_india_share', 70);
+        }
+        final audienceCity = filter.audienceCity
+            .replaceAll(RegExp(r'[%*,()]'), ' ')
+            .trim();
+        if (audienceCity.isNotEmpty) {
+          q = q.ilike('aud_cities_text', '%$audienceCity%');
+        }
         if (filter.shortlistId != null) {
           final saved = await _db
               .from('shortlist_items')
@@ -538,6 +598,11 @@ class SupabaseMarketplaceService implements MarketplaceService {
           ),
           CreatorSort.engagement => q.order(
             'instagram_engagement',
+            ascending: false,
+            nullsFirst: false,
+          ),
+          CreatorSort.quality => q.order(
+            'quality_score',
             ascending: false,
             nullsFirst: false,
           ),
@@ -1073,6 +1138,79 @@ class SupabaseMarketplaceService implements MarketplaceService {
         .from('creator_profiles')
         .update({'media_kit_public': public})
         .eq('id', _uid);
+  });
+
+  @override
+  Future<void> setShareAudience(bool share) => _mutate(() async {
+    await _db
+        .from('creator_profiles')
+        .update({'share_audience': share})
+        .eq('id', _uid);
+  });
+
+  // Sales tracking ----------------------------------------------------------
+
+  @override
+  Future<List<SalesRow>> campaignSales(String campaignId) => _guard(() async {
+    final rows =
+        await _db.rpc('campaign_sales', params: {'p_campaign': campaignId})
+            as List;
+    return [
+      for (final r in rows)
+        SalesRow.fromRow(Map<String, dynamic>.from(r as Map)),
+    ];
+  });
+
+  @override
+  Future<void> setDiscountCode(String collaborationId, String? code) =>
+      _mutate(() async {
+        final clean = code?.trim() ?? '';
+        final rows = await _db
+            .from('collaborations')
+            .update({'discount_code': clean.isEmpty ? null : clean})
+            .eq('id', collaborationId)
+            .select('id');
+        if (rows.isEmpty) {
+          throw const MarketplaceFailure(
+            'Only the brand can set the discount code.',
+          );
+        }
+      });
+
+  static const _storeColumns =
+      'id, platform, store_url, orders_received, orders_matched, last_order_at';
+
+  @override
+  Future<List<StoreConnection>> storeConnections() => _guard(() async {
+    final rows = await _db
+        .from('store_connections')
+        .select(_storeColumns)
+        .order('created_at');
+    return rows.map(StoreConnection.fromRow).toList();
+  });
+
+  @override
+  Future<StoreConnection> saveStoreConnection({
+    required StorePlatform platform,
+    required String storeUrl,
+    required String webhookSecret,
+  }) => _mutate(() async {
+    // Only the visible columns come back: the secret is never readable.
+    final row = await _db
+        .from('store_connections')
+        .upsert({
+          'platform': dbName(platform),
+          'store_url': storeUrl.trim(),
+          'webhook_secret': webhookSecret.trim(),
+        }, onConflict: 'brand_id,platform')
+        .select(_storeColumns)
+        .single();
+    return StoreConnection.fromRow(row);
+  });
+
+  @override
+  Future<void> deleteStoreConnection(String id) => _mutate(() async {
+    await _db.from('store_connections').delete().eq('id', id);
   });
 
   /// People the signed-in user blocked; their content is hidden.

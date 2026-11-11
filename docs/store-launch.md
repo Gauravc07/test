@@ -24,6 +24,10 @@ Checked against Apple's App Review Guidelines and Google Play policy on
 | App icon (1024 px, no transparency; Android adaptive) | Both | **Done**: `assets/icon/` |
 | Release signing | Google | Config **done**. **You:** create the upload key |
 | Store listing, screenshots, privacy answers, ratings | Both | **You**: answers drafted below |
+| Reviews, notifications, sales tracking, media kit, audience search (added 11–12 Nov) | Both | **Done**. Reviews can be reported (UGC rules). Account deletion removes all the new data, tested. Audience search and media kits are opt-in |
+| No subscription prices or "coming soon" in the store apps (Apple 2.1, 3.1.1) | Apple | **Done**: the apps show only deal fees (Settings → Fees). Plans show on the website only |
+| No prompts for features hidden in store builds | Both | **Done**: "Connect Instagram" prompts and audience search are hidden until Instagram is switched on after Meta's review |
+| Demo accounts for reviewers on the live project | Both | **You approve; I create**: one brand and one creator with sample campaigns, a finished deal, reviews, chat and sales |
 
 ## What changed in the app for review
 
@@ -154,6 +158,7 @@ third-party trademarks). Mentioning it in the description is fine.
 | User Content: Other User Content (briefs, pitches, profile, links) | Yes | No | App Functionality |
 | Financial Info: Other Financial Info (rates, invoices) | Yes | No | App Functionality |
 | Other Data: Other Data Types (Instagram insights, only if connected) | Yes | No | App Functionality |
+| Financial Info: Other Financial Info (for brands: totals of store orders credited to their creators; no customer details) | Yes | No | App Functionality, Analytics |
 
 Not collected: location, contacts, photos/videos, browsing/search history,
 purchases, usage data, diagnostics, payment cards.
@@ -180,6 +185,12 @@ creator search and chat.
 > reports are reviewed within 24 hours; support email is in Profile → Help.
 > Account deletion: Profile (creators) or Account (brands) → Delete account.
 > Instagram insights are disabled in this build until Meta approves our app.
+> Reviews after a completed deal can be reported with the Report button
+> under each review. Notifications are in-app (bell icon) and by email; the
+> app sends no push notifications and asks for no device permissions.
+> Brands can connect their own Shopify or WooCommerce store by webhook to
+> see which creator drove each sale; this is optional and needs no login to
+> those services in the app.
 
 ## Google Play
 
@@ -233,6 +244,7 @@ key.
 | Personal info: Other info (Instagram insights) | Yes | Optional | App functionality |
 | Financial info: Other financial info (rates, invoices) | Yes | Optional | App functionality |
 | Messages: Other in-app messages | Yes | Optional | App functionality |
+| Financial info: Purchase history (brands' store orders credited to creators: order number, amount, date, code; no shopper details) | Yes | Optional | App functionality, Analytics |
 | App activity: Other user-generated content | Yes | Optional | App functionality |
 
 ## Store description (draft, both stores)

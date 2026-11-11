@@ -168,26 +168,33 @@ class _BrowserMock extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Dashboard',
-                          style: AppText.serif(
-                            size: 16,
-                            weight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                            height: 1.3,
+                    // Shrinks on very narrow screens instead of overflowing.
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Dashboard',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.serif(
+                              size: 16,
+                              weight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              height: 1.3,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Today, January 16, 2024',
-                          style: AppText.sans(
-                            size: 11,
-                            color: AppColors.textMuted,
+                          Text(
+                            'Today, January 16, 2024',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.sans(
+                              size: 11,
+                              color: AppColors.textMuted,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),

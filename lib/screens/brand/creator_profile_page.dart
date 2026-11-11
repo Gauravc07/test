@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../config/app_config.dart';
 import '../../backend/marketplace_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -144,11 +145,15 @@ class CreatorProfilePage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  if (!c.instagramVerified) ...[
+                  if (!c.instagramVerified && AppConfig.instagramEnabled) ...[
                     const Note(
                       'This creator has not connected Instagram yet, so their '
                       'numbers are not verified.',
                     ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (c.qualityScore != null || c.sharesAudience) ...[
+                    CreatorInsightCard(creator: c),
                     const SizedBox(height: 14),
                   ],
                   if ((c.bio ?? '').trim().isNotEmpty) ...[
@@ -252,4 +257,126 @@ class CreatorProfilePage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Quality score with its reasons, and the audience if the creator shares it.
+class CreatorInsightCard extends StatelessWidget {
+  const CreatorInsightCard({super.key, required this.creator});
+
+  final CreatorSummary creator;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = creator;
+    Widget share(String label, num? value) => value == null
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 120,
+                  child: Text(
+                    label,
+                    style: AppText.sans(
+                      size: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      value: (value / 100).clamp(0, 1).toDouble(),
+                      minHeight: 8,
+                      backgroundColor: AppColors.fill,
+                      color: AppColors.navy,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 48,
+                  child: Text(
+                    '${value.round()}%',
+                    textAlign: TextAlign.right,
+                    style: AppText.sans(size: 13, weight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          );
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (c.qualityScore != null) ...[
+            Row(
+              children: [
+                Text('${c.qualityScore}', style: AppText.heading(34)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Quality: ${c.qualityLabel}',
+                        style: AppText.sans(size: 15, weight: FontWeight.w600),
+                      ),
+                      Text(
+                        'Out of 100, from public engagement, posting and '
+                        'follower growth on Instagram',
+                        style: AppText.sans(
+                          size: 12,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (c.qualityFlags.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              for (final f in c.qualityFlags)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _warning(f)
+                            ? Icons.error_outline
+                            : Icons.check_circle_outline,
+                        size: 16,
+                        color: _warning(f)
+                            ? const Color(0xFF9A6700)
+                            : const Color(0xFF1E6B2E),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(f, style: AppText.sans(size: 14))),
+                    ],
+                  ),
+                ),
+            ],
+          ],
+          if (c.sharesAudience) ...[
+            if (c.qualityScore != null) const Divider(height: 28),
+            Text('AUDIENCE', style: AppText.label()),
+            const SizedBox(height: 10),
+            share('Women', c.audFemaleShare),
+            share('Aged 18–34', c.audAge18to34Share),
+            share('In India', c.audIndiaShare),
+            if (c.audTopCities.isNotEmpty)
+              Text(
+                'Top cities: ${c.audTopCities.join(', ')}',
+                style: AppText.sans(size: 13, color: AppColors.textSecondary),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static bool _warning(String flag) =>
+      RegExp('low|rarely|few|sudden', caseSensitive: false).hasMatch(flag);
 }

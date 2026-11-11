@@ -49,10 +49,7 @@ class _DiscoverCampaignsTabState extends State<DiscoverCampaignsTab> {
               'Brands looking for Instagram creators right now. Apply to the '
               'ones that fit your content.',
         ),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        FilterRow(
           children: [
             FilterDropdown<String?>(
               label: 'Niche',

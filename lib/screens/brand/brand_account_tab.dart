@@ -7,6 +7,7 @@ import '../../theme/app_text.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/marketplace_widgets.dart';
 import '../settings/account_settings.dart';
+import 'store_connections.dart';
 
 /// Brand side: the company profile creators see, and log out.
 class BrandAccountTab extends StatelessWidget {
@@ -42,6 +43,8 @@ class BrandAccountTab extends StatelessWidget {
             service: _service,
           ),
         ),
+        const SizedBox(height: 24),
+        StoreConnectionsSection(service: _service),
         const SizedBox(height: 24),
         AccountSettingsSection(
           auth: auth,

@@ -166,6 +166,12 @@ class FakeMarketplace implements MarketplaceService {
       followers: 24500,
       engagementRate: 6.4,
       instagramVerified: true,
+      qualityScore: 81,
+      qualityFlags: ['Engagement 2.1x typical for their size'],
+      audFemaleShare: 72,
+      audAge18to34Share: 68,
+      audIndiaShare: 94,
+      audTopCities: ['Pune', 'Mumbai'],
     );
     creators[otherCreatorId] = const CreatorSummary(
       id: otherCreatorId,
@@ -494,9 +500,27 @@ class FakeMarketplace implements MarketplaceService {
                 (c.followers ?? 0) >= filter.tier.min!) &&
             (filter.tier.max == null ||
                 (c.followers ?? 0) < filter.tier.max!) &&
-            (saved == null || saved.contains(c.id)))
+            (saved == null || saved.contains(c.id)) &&
+            (c.qualityScore ?? 0) >= filter.minQuality &&
+            _audienceMatches(c, filter))
           c,
     ];
+  }
+
+  static bool _audienceMatches(CreatorSummary c, CreatorFilter f) {
+    final city = f.audienceCity.trim().toLowerCase();
+    if (city.isNotEmpty &&
+        !c.audTopCities.any((x) => x.toLowerCase().contains(city))) {
+      return false;
+    }
+    return switch (f.audience) {
+      AudienceFilter.any => true,
+      AudienceFilter.mostlyWomen => (c.audFemaleShare ?? -1) >= 60,
+      AudienceFilter.mostlyMen =>
+        c.audFemaleShare != null && c.audFemaleShare! <= 40,
+      AudienceFilter.young => (c.audAge18to34Share ?? -1) >= 60,
+      AudienceFilter.india => (c.audIndiaShare ?? -1) >= 70,
+    };
   }
 
   @override
@@ -899,6 +923,81 @@ class FakeMarketplace implements MarketplaceService {
       instagramVerified: creatorProfile.instagramVerified,
       mediaKitPublic: public,
     );
+    _changed();
+  }
+
+  bool audienceShared = false;
+
+  @override
+  Future<void> setShareAudience(bool share) async {
+    audienceShared = share;
+    _changed();
+  }
+
+  // Sales tracking ----------------------------------------------------------
+
+  /// Sales per collaboration (test setup); links are made on demand.
+  final sales = <String, SalesRow>{};
+  final discountCodes = <String, String>{};
+  final stores = <String, StoreConnection>{};
+
+  @override
+  Future<List<SalesRow>> campaignSales(String campaignId) async => [
+    for (final c in collabs.values)
+      if (c.campaignId == campaignId && c.status.isHired)
+        SalesRow(
+          collaborationId: c.id,
+          linkCode: sales[c.id]?.linkCode ?? 'cara-creates-${c.id}',
+          discountCode: discountCodes[c.id],
+          clicks: sales[c.id]?.clicks ?? 0,
+          orders: sales[c.id]?.orders ?? 0,
+          revenue: sales[c.id]?.revenue ?? 0,
+        ),
+  ];
+
+  @override
+  Future<void> setDiscountCode(String collaborationId, String? code) async {
+    if (userId != collabs[collaborationId]?.brandId) {
+      throw const MarketplaceFailure(
+        'Only the brand can set the discount code.',
+      );
+    }
+    final clean = code?.trim().toUpperCase() ?? '';
+    if (clean.isEmpty) {
+      discountCodes.remove(collaborationId);
+    } else {
+      discountCodes[collaborationId] = clean;
+    }
+    _changed();
+  }
+
+  @override
+  Future<List<StoreConnection>> storeConnections() async =>
+      stores.values.toList();
+
+  String? lastWebhookSecret;
+
+  @override
+  Future<StoreConnection> saveStoreConnection({
+    required StorePlatform platform,
+    required String storeUrl,
+    required String webhookSecret,
+  }) async {
+    lastWebhookSecret = webhookSecret;
+    final existing = stores.values.where((s) => s.platform == platform);
+    final s = StoreConnection(
+      id: existing.isEmpty ? _id('store') : existing.first.id,
+      platform: platform,
+      storeUrl: storeUrl.trim(),
+    );
+    stores[s.id] = s;
+    _changed();
+    return s;
+  }
+
+  @override
+  Future<void> deleteStoreConnection(String id) async {
+    stores.remove(id);
     _changed();
   }
 

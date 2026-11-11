@@ -13,7 +13,7 @@ import 'support/fakes.dart';
 Future<void> pump(
   WidgetTester tester,
   Widget page, {
-  Size size = const Size(1280, 1000),
+  Size size = const Size(1280, 1800),
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -22,18 +22,25 @@ Future<void> pump(
   await tester.pumpAndSettle();
 }
 
-Widget shell(FakeMarketplace market, {required bool brand}) => HomeShell(
-  auth: FakeAuth(brand ? brandAccount : creatorAccount),
-  marketplace: market,
-  instagram: FakeInstagram(),
-);
+/// The signed-in app, opened on the campaigns tab unless [tab] says
+/// otherwise.
+Widget shell(FakeMarketplace market, {required bool brand, HomeTab? tab}) =>
+    HomeShell(
+      auth: FakeAuth(brand ? brandAccount : creatorAccount),
+      marketplace: market,
+      instagram: FakeInstagram(),
+      initialTab: tab ?? (brand ? HomeTab.brandCampaigns : HomeTab.campaigns),
+    );
 
 Future<void> tapText(
   WidgetTester tester,
   String text, {
   bool last = false,
 }) async {
-  final finder = last ? find.text(text).last : find.text(text).first;
+  // Phone tab buttons are icons, labelled by their tooltips.
+  final byText = find.text(text);
+  final all = byText.evaluate().isEmpty ? find.byTooltip(text) : byText;
+  final finder = last ? all.last : all.first;
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);

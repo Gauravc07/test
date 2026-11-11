@@ -28,6 +28,13 @@ Future<void> tapText(
   String text, {
   bool last = false,
 }) async {
+  // Phone tab buttons are icons, labelled by their tooltips.
+  if (find.text(text).evaluate().isEmpty &&
+      find.byTooltip(text).evaluate().isNotEmpty) {
+    await tester.tap(find.byTooltip(text).first);
+    await tester.pumpAndSettle();
+    return;
+  }
   var finder = last ? find.text(text).last : find.text(text).first;
   if (find.text(text).evaluate().isEmpty) {
     // Lists build lazily; scroll until the text is built.

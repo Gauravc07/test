@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../backend/auth_service.dart';
@@ -70,7 +71,7 @@ class AccountSettingsSection extends StatelessWidget {
               EmailNotificationsSwitch(service: marketplace),
               tile(
                 Icons.sell_outlined,
-                'Plans and pricing',
+                kIsWeb ? 'Plans and pricing' : 'Fees',
                 () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => PricingPage(audience: pricingAudience),

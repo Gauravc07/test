@@ -5,7 +5,13 @@
   "buildCommand": "bash scripts/vercel-build.sh",
   "outputDirectory": "build/web",
   "cleanUrls": true,
-  "rewrites": [{ "source": "/kit/:handle", "destination": "/" }],
+  "rewrites": [
+    { "source": "/kit/:handle", "destination": "/" },
+    {
+      "source": "/go/:code",
+      "destination": "https://tnevsivuemhlrlclpfuw.supabase.co/functions/v1/go/:code"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

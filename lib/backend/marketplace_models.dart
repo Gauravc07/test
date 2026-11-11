@@ -139,6 +139,7 @@ class Campaign {
     this.acceptsQuotes = true,
     this.productDetails,
     this.guidelines,
+    this.landingUrl,
     this.deliverables = const {},
     this.budget = 0,
     this.currency = 'INR',
@@ -181,6 +182,7 @@ class Campaign {
       acceptsQuotes: r['accepts_quotes'] as bool? ?? true,
       productDetails: r['product_details'] as String?,
       guidelines: r['guidelines'] as String?,
+      landingUrl: r['landing_url'] as String?,
       deliverables: _deliverables(r['deliverables']),
       budget: _num(r['budget']) ?? 0,
       currency: r['currency'] as String? ?? 'INR',
@@ -209,6 +211,9 @@ class Campaign {
   final bool acceptsQuotes;
   final String? productDetails;
   final String? guidelines;
+
+  /// Where creators' tracked links send people.
+  final String? landingUrl;
   final Map<String, int> deliverables;
   final num budget;
   final String currency;
@@ -275,6 +280,7 @@ class CampaignDraft {
     this.acceptsQuotes = true,
     this.productDetails = '',
     this.guidelines = '',
+    this.landingUrl = '',
     Map<String, int>? deliverables,
     this.budget,
     this.creatorSlots,
@@ -297,6 +303,7 @@ class CampaignDraft {
     acceptsQuotes: c.acceptsQuotes,
     productDetails: c.productDetails ?? '',
     guidelines: c.guidelines ?? '',
+    landingUrl: c.landingUrl ?? '',
     deliverables: Map.of(c.deliverables),
     budget: c.budget,
     creatorSlots: c.creatorSlots,
@@ -317,6 +324,7 @@ class CampaignDraft {
   bool acceptsQuotes;
   String productDetails;
   String guidelines;
+  String landingUrl;
   Map<String, int> deliverables;
   num? budget;
   int? creatorSlots;
@@ -345,6 +353,7 @@ class CampaignDraft {
           ? null
           : text(productDetails),
       'guidelines': text(guidelines),
+      'landing_url': text(landingUrl),
       'deliverables': {
         for (final e in deliverables.entries)
           if (e.value > 0) e.key: e.value,
@@ -379,6 +388,12 @@ class CreatorSummary {
     this.engagementRate,
     this.instagramVerified = false,
     this.rating = const RatingSummary(),
+    this.qualityScore,
+    this.qualityFlags = const [],
+    this.audFemaleShare,
+    this.audAge18to34Share,
+    this.audIndiaShare,
+    this.audTopCities = const [],
   });
 
   factory CreatorSummary.fromRow(Map<String, dynamic> r) => CreatorSummary(
@@ -401,6 +416,12 @@ class CreatorSummary {
       average: _num(r['rating_average']),
       count: _int(r['rating_count']) ?? 0,
     ),
+    qualityScore: _int(r['quality_score']),
+    qualityFlags: _strings(r['quality_flags']),
+    audFemaleShare: _num(r['aud_female_share']),
+    audAge18to34Share: _num(r['aud_age_18_34_share']),
+    audIndiaShare: _num(r['aud_india_share']),
+    audTopCities: _strings(r['aud_top_cities']),
   );
 
   final String id;
@@ -408,6 +429,30 @@ class CreatorSummary {
 
   /// Published reviews from brands.
   final RatingSummary rating;
+
+  /// 0-100 from public Instagram signals; null if not verified or too few
+  /// recent posts. See creator_stats in the database.
+  final int? qualityScore;
+
+  /// Why, e.g. "Engagement 2.1x typical for their size".
+  final List<String> qualityFlags;
+
+  /// Audience, only when the creator chose to share it.
+  final num? audFemaleShare;
+  final num? audAge18to34Share;
+  final num? audIndiaShare;
+  final List<String> audTopCities;
+
+  bool get sharesAudience => audFemaleShare != null || audTopCities.isNotEmpty;
+
+  /// "Excellent", "Strong", "Fair" or "Weak".
+  String? get qualityLabel => switch (qualityScore) {
+    null => null,
+    >= 85 => 'Excellent',
+    >= 70 => 'Strong',
+    >= 50 => 'Fair',
+    _ => 'Weak',
+  };
   final String? avatarUrl;
   final String? handle;
   final String? bio;
@@ -851,6 +896,7 @@ class CreatorProfileData {
     this.followers,
     this.instagramVerified = false,
     this.mediaKitPublic = false,
+    this.shareAudience = false,
   });
 
   final String fullName;
@@ -868,6 +914,9 @@ class CreatorProfileData {
 
   /// Read-only here: changed with [MarketplaceService.setMediaKitPublic].
   final bool mediaKitPublic;
+
+  /// Read-only here: changed with [MarketplaceService.setShareAudience].
+  final bool shareAudience;
 }
 
 /// The signed-in brand's editable profile.
@@ -925,7 +974,7 @@ enum FollowerTier {
   final int? max;
 }
 
-enum CreatorSort { followers, engagement, newest }
+enum CreatorSort { followers, engagement, quality, newest }
 
 class CreatorFilter {
   const CreatorFilter({
@@ -936,6 +985,9 @@ class CreatorFilter {
     this.verifiedOnly = false,
     this.shortlistId,
     this.sort = CreatorSort.followers,
+    this.audience = AudienceFilter.any,
+    this.audienceCity = '',
+    this.minQuality = 0,
   });
 
   final String query;
@@ -948,6 +1000,18 @@ class CreatorFilter {
   final String? shortlistId;
   final CreatorSort sort;
 
+  /// Who the creator's followers are (creators who share their audience).
+  final AudienceFilter audience;
+
+  /// A city among the audience's top cities.
+  final String audienceCity;
+
+  /// Minimum quality score, 0 for any.
+  final int minQuality;
+
+  bool get usesAudience =>
+      audience != AudienceFilter.any || audienceCity.trim().isNotEmpty;
+
   CreatorFilter copyWith({
     String? query,
     String? Function()? niche,
@@ -956,6 +1020,9 @@ class CreatorFilter {
     bool? verifiedOnly,
     String? Function()? shortlistId,
     CreatorSort? sort,
+    AudienceFilter? audience,
+    String? audienceCity,
+    int? minQuality,
   }) => CreatorFilter(
     query: query ?? this.query,
     niche: niche == null ? this.niche : niche(),
@@ -964,10 +1031,100 @@ class CreatorFilter {
     verifiedOnly: verifiedOnly ?? this.verifiedOnly,
     shortlistId: shortlistId == null ? this.shortlistId : shortlistId(),
     sort: sort ?? this.sort,
+    audience: audience ?? this.audience,
+    audienceCity: audienceCity ?? this.audienceCity,
+    minQuality: minQuality ?? this.minQuality,
   );
 }
 
-enum ReportTarget { user, campaign, message, collaboration }
+/// Audience profiles brands can search for.
+enum AudienceFilter {
+  any('Any audience'),
+  mostlyWomen('Mostly women'),
+  mostlyMen('Mostly men'),
+  young('Mostly 18–34'),
+  india('Mostly in India');
+
+  const AudienceFilter(this.label);
+
+  final String label;
+}
+
+// Sales tracking --------------------------------------------------------------
+
+/// Clicks, orders and revenue for one creator on one campaign.
+class SalesRow {
+  const SalesRow({
+    required this.collaborationId,
+    this.linkCode,
+    this.discountCode,
+    this.clicks = 0,
+    this.orders = 0,
+    this.revenue = 0,
+  });
+
+  factory SalesRow.fromRow(Map<String, dynamic> r) => SalesRow(
+    collaborationId: r['collaboration_id'] as String,
+    linkCode: r['link_code'] as String?,
+    discountCode: r['discount_code'] as String?,
+    clicks: _int(r['clicks']) ?? 0,
+    orders: _int(r['orders']) ?? 0,
+    revenue: _num(r['revenue']) ?? 0,
+  );
+
+  final String collaborationId;
+  final String? linkCode;
+  final String? discountCode;
+  final int clicks;
+  final int orders;
+  final num revenue;
+
+  /// Orders per click, as a percentage.
+  double? get conversionRate => clicks == 0 ? null : orders / clicks * 100;
+}
+
+enum StorePlatform {
+  shopify('Shopify'),
+  woocommerce('WooCommerce');
+
+  const StorePlatform(this.label);
+
+  final String label;
+}
+
+/// A brand's store, sending orders to Shor by webhook.
+class StoreConnection {
+  const StoreConnection({
+    required this.id,
+    required this.platform,
+    required this.storeUrl,
+    this.ordersReceived = 0,
+    this.ordersMatched = 0,
+    this.lastOrderAt,
+  });
+
+  factory StoreConnection.fromRow(Map<String, dynamic> r) => StoreConnection(
+    id: r['id'] as String,
+    platform: fromDb(
+      StorePlatform.values,
+      r['platform'],
+      StorePlatform.shopify,
+    ),
+    storeUrl: r['store_url'] as String? ?? '',
+    ordersReceived: _int(r['orders_received']) ?? 0,
+    ordersMatched: _int(r['orders_matched']) ?? 0,
+    lastOrderAt: parseTimestamp(r['last_order_at']),
+  );
+
+  final String id;
+  final StorePlatform platform;
+  final String storeUrl;
+  final int ordersReceived;
+  final int ordersMatched;
+  final DateTime? lastOrderAt;
+}
+
+enum ReportTarget { user, campaign, message, collaboration, review }
 
 enum ReportReason {
   spam('Spam'),

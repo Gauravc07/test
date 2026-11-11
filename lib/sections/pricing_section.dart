@@ -25,9 +25,16 @@ class PricingSection extends StatefulWidget {
     this.showHeading = true,
     this.initialAudience = PlanAudience.brand,
     this.onStartFree,
+    this.showPlans = true,
   });
 
   final bool showHeading;
+
+  /// Subscription plans. Off in the phone apps: plans aren't sold yet, and
+  /// the store apps must not show prices for things bought elsewhere or
+  /// "coming soon" content. They show the deal fees, which are for
+  /// services delivered outside the app.
+  final bool showPlans;
   final PlanAudience initialAudience;
 
   /// What "Start free" does. Defaults to opening sign-up.
@@ -104,43 +111,50 @@ class _PricingSectionState extends State<PricingSection> {
                   selected: _audience,
                   onChanged: (v) => setState(() => _audience = v),
                 ),
-                ChoiceToggle<BillingPeriod>(
-                  options: const {
-                    BillingPeriod.monthly: 'Monthly',
-                    BillingPeriod.annual: 'Yearly, save more',
-                  },
-                  selected: _period,
-                  onChanged: (v) => setState(() => _period = v),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (_brand) ...[
-              const _FoundingBanner(),
-              const SizedBox(height: 24),
-            ],
-            ResponsiveGrid(
-              columns: columns,
-              spacing: 20,
-              children: [
-                for (final p in plans)
-                  _PlanCard(
-                    plan: p,
-                    period: _period,
-                    founding: _brand,
-                    onStartFree: _startFree,
-                    onReserve: _reserve(p),
+                if (widget.showPlans)
+                  ChoiceToggle<BillingPeriod>(
+                    options: const {
+                      BillingPeriod.monthly: 'Monthly',
+                      BillingPeriod.annual: 'Yearly, save more',
+                    },
+                    selected: _period,
+                    onChanged: (v) => setState(() => _period = v),
                   ),
               ],
             ),
-            SizedBox(height: r(40, md: 56)),
+            const SizedBox(height: 24),
+            if (widget.showPlans) ...[
+              if (_brand) ...[
+                const _FoundingBanner(),
+                const SizedBox(height: 24),
+              ],
+              ResponsiveGrid(
+                columns: columns,
+                spacing: 20,
+                children: [
+                  for (final p in plans)
+                    _PlanCard(
+                      plan: p,
+                      period: _period,
+                      founding: _brand,
+                      onStartFree: _startFree,
+                      onReserve: _reserve(p),
+                    ),
+                ],
+              ),
+              SizedBox(height: r(40, md: 56)),
+            ],
             _DealFees(brand: _brand),
             const SizedBox(height: 24),
             const _CalculatorCard(),
             const SizedBox(height: 16),
             Text(
-              'Prices are before 18% GST. Payments through Shor are launching '
-              'soon. Until then, brands and creators settle payment directly.',
+              widget.showPlans
+                  ? 'Prices are before 18% GST. Payments through Shor are '
+                        'launching soon. Until then, brands and creators settle '
+                        'payment directly.'
+                  : 'Fees are before 18% GST. Brands pay creators directly and '
+                        'Shor invoices its fee.',
               textAlign: TextAlign.center,
               style: AppText.sans(size: 13, color: AppColors.textMuted),
             ),
@@ -160,10 +174,11 @@ class PricingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ShorPage(
-      title: 'Plans and pricing',
+      title: kIsWeb ? 'Plans and pricing' : 'Fees',
       body: SingleChildScrollView(
         child: PricingSection(
           showHeading: false,
+          showPlans: kIsWeb,
           initialAudience: audience,
           onStartFree: () => Navigator.of(context).maybePop(),
         ),

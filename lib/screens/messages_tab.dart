@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../backend/marketplace_service.dart';
@@ -20,6 +22,32 @@ class MessagesTab extends StatefulWidget {
 class _MessagesTabState extends State<MessagesTab> {
   MarketplaceService get _service => widget.service ?? marketplaceService;
   int _version = 0;
+  StreamSubscription<List<AppNotification>>? _notes;
+  String? _lastSeen;
+
+  @override
+  void initState() {
+    super.initState();
+    // A new message updates its chat's notification: reload the list so
+    // the latest message and unread count show without pulling to refresh.
+    _notes = _service.notifications().listen((notes) {
+      final seen = [
+        for (final n in notes)
+          if (n.kind == 'message')
+            '${n.id}:${n.createdAt?.millisecondsSinceEpoch}:${n.unread}',
+      ].join('|');
+      if (_lastSeen != null && seen != _lastSeen && mounted) {
+        setState(() => _version++);
+      }
+      _lastSeen = seen;
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _notes?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

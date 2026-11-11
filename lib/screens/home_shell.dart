@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../backend/auth_service.dart';
@@ -18,10 +20,13 @@ import 'creator/discover_campaigns_tab.dart';
 import 'creator/my_work_tab.dart';
 import 'instagram_dashboard_page.dart';
 import 'messages_tab.dart';
+import 'home_tab.dart';
 import 'notifications_page.dart';
 import 'terms_page.dart';
 
 enum HomeTab {
+  // Both, first
+  home,
   // Creators
   campaigns,
   work,
@@ -143,7 +148,15 @@ class _TabSpec {
   final IconData selectedIcon;
 }
 
+const _homeTab = _TabSpec(
+  HomeTab.home,
+  'Home',
+  Icons.home_outlined,
+  Icons.home,
+);
+
 const _creatorTabs = [
+  _homeTab,
   _TabSpec(
     HomeTab.campaigns,
     'Campaigns',
@@ -167,6 +180,7 @@ const _creatorTabs = [
 ];
 
 const _brandTabs = [
+  _homeTab,
   _TabSpec(
     HomeTab.brandCampaigns,
     'Campaigns',
@@ -218,6 +232,31 @@ class _RoleShell extends StatefulWidget {
 }
 
 class _RoleShellState extends State<_RoleShell> {
+  /// Chats with unread messages, for the Messages tab badge. One message
+  /// notification exists per unread chat.
+  final _unreadChats = ValueNotifier<int>(0);
+  StreamSubscription<List<AppNotification>>? _notes;
+
+  @override
+  void initState() {
+    super.initState();
+    _notes = (widget.marketplace ?? marketplaceService).notifications().listen(
+      (notes) => _unreadChats.value = notes
+          .where((n) => n.kind == 'message' && n.unread)
+          .length,
+      onError: (_) {},
+    );
+  }
+
+  @override
+  void dispose() {
+    _notes?.cancel();
+    _unreadChats.dispose();
+    super.dispose();
+  }
+
+  int _badge(HomeTab tab) => tab == HomeTab.messages ? _unreadChats.value : 0;
+
   late final List<_TabSpec> _tabs = widget.account.role == AccountRole.brand
       ? _brandTabs
       : [
@@ -243,7 +282,21 @@ class _RoleShellState extends State<_RoleShell> {
     _built.add(i);
   });
 
+  void _go(HomeDestination d) => _select(switch (d) {
+    HomeDestination.campaigns => HomeTab.campaigns,
+    HomeDestination.creators => HomeTab.creators,
+    HomeDestination.work => HomeTab.work,
+    HomeDestination.messages => HomeTab.messages,
+    HomeDestination.payments => HomeTab.payments,
+    HomeDestination.profile => HomeTab.profile,
+  });
+
   Widget _page(HomeTab tab) => switch (tab) {
+    HomeTab.home => HomeDashboard(
+      account: widget.account,
+      service: widget.marketplace,
+      onGo: _go,
+    ),
     HomeTab.campaigns => DiscoverCampaignsTab(service: widget.marketplace),
     HomeTab.work => MyWorkTab(
       service: widget.marketplace,
@@ -278,7 +331,12 @@ class _RoleShellState extends State<_RoleShell> {
   };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+    valueListenable: _unreadChats,
+    builder: (context, _, _) => _buildShell(context),
+  );
+
+  Widget _buildShell(BuildContext context) {
     final body = IndexedStack(
       index: _index,
       children: [
@@ -289,6 +347,7 @@ class _RoleShellState extends State<_RoleShell> {
 
     if (context.isMd) {
       return Scaffold(
+        backgroundColor: AppColors.appBg,
         body: SafeArea(
           child: Row(
             children: [
@@ -296,7 +355,7 @@ class _RoleShellState extends State<_RoleShell> {
                 selectedIndex: _index,
                 onDestinationSelected: _selectIndex,
                 labelType: NavigationRailLabelType.all,
-                backgroundColor: AppColors.bgPrimary,
+                backgroundColor: AppColors.appBg,
                 indicatorColor: AppColors.accentSoft,
                 selectedIconTheme: const IconThemeData(color: AppColors.accent),
                 unselectedIconTheme: const IconThemeData(
@@ -333,8 +392,14 @@ class _RoleShellState extends State<_RoleShell> {
                 destinations: [
                   for (final t in _tabs)
                     NavigationRailDestination(
-                      icon: Icon(t.icon),
-                      selectedIcon: Icon(t.selectedIcon),
+                      icon: _CountBadge(
+                        count: _badge(t.tab),
+                        child: Icon(t.icon),
+                      ),
+                      selectedIcon: _CountBadge(
+                        count: _badge(t.tab),
+                        child: Icon(t.selectedIcon),
+                      ),
                       label: Text(t.label),
                     ),
                 ],
@@ -347,47 +412,163 @@ class _RoleShellState extends State<_RoleShell> {
       );
     }
 
+    final onHome = _tabs[_index].tab == HomeTab.home;
     return Scaffold(
+      backgroundColor: AppColors.appBg,
+      // Content scrolls behind the floating bar; PageList pads for it.
+      extendBody: true,
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            Container(
-              height: 52,
-              padding: const EdgeInsets.only(left: 16, right: 4),
-              decoration: const BoxDecoration(
-                color: AppColors.bgPrimary,
-                border: Border(bottom: BorderSide(color: AppColors.border)),
+            if (!onHome)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Row(
+                  children: [
+                    const Wordmark(),
+                    const Spacer(),
+                    NotificationBell(service: widget.marketplace),
+                  ],
+                ),
               ),
-              child: Row(
-                children: [
-                  const Wordmark(),
-                  const Spacer(),
-                  NotificationBell(service: widget.marketplace),
-                ],
-              ),
-            ),
             Expanded(child: body),
           ],
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _selectIndex,
-        backgroundColor: AppColors.bgCard,
-        indicatorColor: AppColors.accentSoft,
-        surfaceTintColor: Colors.transparent,
-        height: 66,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: [
-          for (final t in _tabs)
-            NavigationDestination(
-              icon: Icon(t.icon),
-              selectedIcon: Icon(t.selectedIcon, color: AppColors.accent),
-              label: t.label,
-            ),
-        ],
+      bottomNavigationBar: _FloatingNavBar(
+        tabs: _tabs,
+        index: _index,
+        onSelect: _selectIndex,
+        badge: _badge,
       ),
     );
   }
+}
+
+/// Navy pill floating above the content, one round button per tab. The
+/// selected tab is a white disc. Labels are read out and shown as tooltips.
+class _FloatingNavBar extends StatelessWidget {
+  const _FloatingNavBar({
+    required this.tabs,
+    required this.index,
+    required this.onSelect,
+    required this.badge,
+  });
+
+  final List<_TabSpec> tabs;
+  final int index;
+  final ValueChanged<int> onSelect;
+  final int Function(HomeTab) badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Center(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Container(
+              height: 66,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: AppColors.navy,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.navyAlpha(0.3),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  for (var i = 0; i < tabs.length; i++)
+                    _NavButton(
+                      spec: tabs[i],
+                      selected: i == index,
+                      count: badge(tabs[i].tab),
+                      onTap: () => onSelect(i),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavButton extends StatelessWidget {
+  const _NavButton({
+    required this.spec,
+    required this.selected,
+    required this.onTap,
+    this.count = 0,
+  });
+
+  final _TabSpec spec;
+  final bool selected;
+  final VoidCallback onTap;
+
+  /// Unread items, shown as a dot with a number.
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: count > 0 ? '${spec.label}, $count unread' : spec.label,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: spec.label,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 28,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: selected ? Colors.white : AppColors.white(0.04),
+              border: Border.all(
+                color: selected ? Colors.white : AppColors.white(0.14),
+              ),
+            ),
+            child: _CountBadge(
+              count: count,
+              child: Icon(
+                selected ? spec.selectedIcon : spec.icon,
+                size: 22,
+                color: selected ? AppColors.navy : AppColors.white(0.85),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count, required this.child});
+
+  final int count;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Badge(
+    isLabelVisible: count > 0,
+    backgroundColor: const Color(0xFFE5484D),
+    label: Text(count > 9 ? '9+' : '$count'),
+    child: child,
+  );
 }

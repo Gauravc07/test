@@ -8,6 +8,7 @@ class ReportRow {
     required this.cost,
     required this.invoiced,
     this.post,
+    this.sales,
   });
 
   final Collaboration collaboration;
@@ -19,6 +20,18 @@ class ReportRow {
   /// once invoiced, otherwise the agreed fee.
   final num cost;
   final bool invoiced;
+
+  /// Tracked-link clicks and attributed orders.
+  final SalesRow? sales;
+
+  int get clicks => sales?.clicks ?? 0;
+  int get orders => sales?.orders ?? 0;
+  num get revenue => sales?.revenue ?? 0;
+
+  num? get costPerOrder => orders == 0 || cost == 0 ? null : cost / orders;
+
+  /// Revenue for every rupee spent.
+  num? get roas => cost == 0 || revenue == 0 ? null : revenue / cost;
 
   String get name => collaboration.creator?.displayName ?? 'Creator';
   bool get synced => post?.matched ?? false;
@@ -48,9 +61,11 @@ class CampaignReport {
     required List<Collaboration> collaborations,
     required List<LivePost> posts,
     required List<Invoice> invoices,
+    List<SalesRow> sales = const [],
     String currency = 'INR',
   }) {
     final postByCollab = {for (final p in posts) p.collaborationId: p};
+    final salesByCollab = {for (final s in sales) s.collaborationId: s};
     final rows = <ReportRow>[];
     for (final c in collaborations.where((c) => c.status.isHired)) {
       final invoice = invoices
@@ -65,6 +80,7 @@ class CampaignReport {
           post: postByCollab[c.id],
           cost: invoice?.brandTotal ?? c.agreedAmount ?? 0,
           invoiced: invoice != null,
+          sales: salesByCollab[c.id],
         ),
       );
     }
@@ -88,6 +104,24 @@ class CampaignReport {
   int get saves => _sum((r) => r.saves);
   int get shares => _sum((r) => r.shares);
   num get cost => rows.fold<num>(0, (s, r) => s + r.cost);
+  int get clicks => _sum((r) => r.clicks);
+  int get orders => _sum((r) => r.orders);
+  num get revenue => rows.fold<num>(0, (s, r) => s + r.revenue);
+
+  /// Any tracked clicks or orders yet.
+  bool get hasSales => clicks > 0 || orders > 0;
+
+  num? get costPerOrder => orders == 0 || cost == 0 ? null : cost / orders;
+
+  /// Revenue for every rupee spent, e.g. 3.2 means ₹3.20 back per ₹1.
+  num? get roas => cost == 0 || revenue == 0 ? null : revenue / cost;
+
+  /// Most revenue. Null until a sale is credited.
+  ReportRow? get topSeller {
+    final selling = rows.where((r) => r.revenue > 0).toList()
+      ..sort((a, b) => b.revenue.compareTo(a.revenue));
+    return selling.firstOrNull;
+  }
 
   double? get engagementRate => reach == 0 ? null : interactions / reach * 100;
 
@@ -142,6 +176,11 @@ class CampaignReport {
         'Invoiced',
         'Cost per 1K views',
         'Cost per engagement',
+        'Clicks',
+        'Orders',
+        'Revenue ($currency)',
+        'Cost per order',
+        'Return on spend',
       ].join(','),
       for (final r in rows)
         [
@@ -160,6 +199,11 @@ class CampaignReport {
           r.invoiced ? 'yes' : 'no',
           n(r.costPerThousandViews),
           n(r.costPerEngagement),
+          r.clicks,
+          r.orders,
+          n(r.revenue),
+          n(r.costPerOrder),
+          n(r.roas),
         ].join(','),
     ];
     return '${lines.join('\n')}\n';

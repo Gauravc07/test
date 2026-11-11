@@ -34,6 +34,7 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
   late final _title = TextEditingController(text: _d.title);
   late final _description = TextEditingController(text: _d.description);
   late final _guidelines = TextEditingController(text: _d.guidelines);
+  late final _landing = TextEditingController(text: _d.landingUrl);
   late final _product = TextEditingController(text: _d.productDetails);
   late final _payout = TextEditingController(
     text: _d.payoutPerCreator?.round().toString() ?? '',
@@ -62,6 +63,7 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
       _title,
       _description,
       _guidelines,
+      _landing,
       _product,
       _payout,
       _budget,
@@ -100,6 +102,7 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
       ..title = _title.text
       ..description = _description.text
       ..guidelines = _guidelines.text
+      ..landingUrl = _landing.text
       ..productDetails = _product.text
       ..payoutPerCreator = num.tryParse(_payout.text.trim())
       ..budget = num.tryParse(_budget.text.trim())
@@ -275,6 +278,30 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
                             'links, the #ad disclosure…',
                         alignLabelWithHint: true,
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      key: const ValueKey('landing-url'),
+                      controller: _landing,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'Landing page (optional)',
+                        hintText: 'https://yourstore.com/products/serum',
+                        helperText:
+                            'Each creator gets a tracked link to this page, so you '
+                            'see clicks and sales per creator.',
+                        helperMaxLines: 2,
+                      ),
+                      validator: (v) {
+                        final t = v?.trim() ?? '';
+                        if (t.isEmpty) return null;
+                        final u = Uri.tryParse(t);
+                        return u != null &&
+                                u.scheme == 'https' &&
+                                u.host.contains('.')
+                            ? null
+                            : 'Enter a full https:// link';
+                      },
                     ),
                   ]),
                   _section('What you offer', [

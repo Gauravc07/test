@@ -22,6 +22,7 @@ typedef _CampaignData = ({
   List<Collaboration> collabs,
   List<LivePost> posts,
   List<Invoice> invoices,
+  List<SalesRow> sales,
 });
 
 enum _Tab { applications, invited, hired, report }
@@ -51,11 +52,13 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
     final invoices = (await _service.invoices())
         .where((i) => ids.contains(i.collaborationId))
         .toList();
+    final sales = await _service.campaignSales(widget.campaignId);
     return (
       campaign: campaign,
       collabs: collabs,
       posts: posts,
       invoices: invoices,
+      sales: sales,
     );
   }
 
@@ -375,6 +378,7 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
       collaborations: data.collabs,
       posts: data.posts,
       invoices: data.invoices,
+      sales: data.sales,
       currency: data.campaign.currency,
     );
     final posts = data.posts;
@@ -387,17 +391,24 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
         spacing: 10,
         children: [
           MetricTile(
+            icon: Icons.movie_outlined,
             label: 'Posts live',
             value: '${report.postsLive}',
             caption: '${report.rows.length} hired',
           ),
-          MetricTile(label: 'Views', value: formatCompact(report.views)),
           MetricTile(
+            icon: Icons.visibility_outlined,
+            label: 'Views',
+            value: formatCompact(report.views),
+          ),
+          MetricTile(
+            icon: Icons.people_outline,
             label: 'Reach',
             value: formatCompact(report.reach),
             caption: 'Summed across posts',
           ),
           MetricTile(
+            icon: Icons.favorite_border,
             label: 'Engagement',
             value: report.engagementRate == null
                 ? '—'
@@ -405,20 +416,75 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
             caption:
                 '${formatCompact(report.interactions)} interactions ÷ reach',
           ),
-          MetricTile(label: 'Saves', value: formatCompact(report.saves)),
-          MetricTile(label: 'Shares', value: formatCompact(report.shares)),
           MetricTile(
+            icon: Icons.bookmark_border,
+            label: 'Saves',
+            value: formatCompact(report.saves),
+          ),
+          MetricTile(
+            icon: Icons.send_outlined,
+            label: 'Shares',
+            value: formatCompact(report.shares),
+          ),
+          MetricTile(
+            icon: Icons.currency_rupee,
             label: 'Total cost',
             value: report.money(report.cost),
             caption: 'Invoices incl. Shor fee and GST, else agreed fees',
           ),
           MetricTile(
+            icon: Icons.speed,
             label: 'Cost per 1K views',
             value: report.money(report.costPerThousandViews),
             caption: 'Posts with results',
           ),
         ],
       ),
+      const SizedBox(height: 20),
+      const SectionTitle('Sales'),
+      ResponsiveGrid(
+        columns: context.responsive<int>(2, md: 4),
+        spacing: 10,
+        children: [
+          MetricTile(
+            icon: Icons.ads_click,
+            label: 'Link clicks',
+            value: formatCompact(report.clicks),
+          ),
+          MetricTile(
+            icon: Icons.shopping_bag_outlined,
+            label: 'Orders',
+            value: '${report.orders}',
+            caption: report.clicks == 0
+                ? null
+                : '${(report.orders / report.clicks * 100).toStringAsFixed(1)}% of clicks',
+          ),
+          MetricTile(
+            icon: Icons.payments_outlined,
+            label: 'Revenue',
+            value: report.money(report.revenue),
+          ),
+          MetricTile(
+            icon: Icons.trending_up,
+            label: 'Return on spend',
+            value: report.roas == null
+                ? '—'
+                : '${report.roas!.toStringAsFixed(1)}x',
+            caption: report.costPerOrder == null
+                ? 'Revenue ÷ cost'
+                : '${report.money(report.costPerOrder)} per order',
+          ),
+        ],
+      ),
+      if (!report.hasSales) ...[
+        const SizedBox(height: 10),
+        const Note(
+          'Each creator has a tracked link and can have a discount code, on '
+          'their collaboration page. Connect your Shopify or WooCommerce store '
+          'in Account to count orders.',
+          icon: Icons.storefront_outlined,
+        ),
+      ],
       const SizedBox(height: 12),
       Note(
         unsynced > 0
@@ -536,6 +602,12 @@ class _CreatorResultRow extends StatelessWidget {
                   tone: Tone.success,
                   icon: Icons.trending_up,
                 ),
+              if (identical(report.topSeller, r))
+                const StatusChip(
+                  'Top seller',
+                  tone: Tone.success,
+                  icon: Icons.shopping_bag_outlined,
+                ),
               if (identical(report.bestValue, r))
                 const StatusChip(
                   'Best value',
@@ -563,6 +635,13 @@ class _CreatorResultRow extends StatelessWidget {
               ),
               stat(r.invoiced ? 'invoiced' : 'agreed', report.money(r.cost)),
               stat('per 1K views', report.money(r.costPerThousandViews)),
+              if (r.clicks > 0 || r.orders > 0) ...[
+                stat('clicks', formatCompact(r.clicks)),
+                stat('orders', '${r.orders}'),
+                stat('revenue', report.money(r.revenue)),
+                if (r.roas != null)
+                  stat('return', '${r.roas!.toStringAsFixed(1)}x'),
+              ],
             ],
           ),
         ],

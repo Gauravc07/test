@@ -30,11 +30,13 @@ class _DiscoverCreatorsTabState extends State<DiscoverCreatorsTab> {
   int _version = 0;
   final _search = TextEditingController();
   final _city = TextEditingController();
+  final _audienceCity = TextEditingController();
 
   @override
   void dispose() {
     _search.dispose();
     _city.dispose();
+    _audienceCity.dispose();
     super.dispose();
   }
 
@@ -43,8 +45,13 @@ class _DiscoverCreatorsTabState extends State<DiscoverCreatorsTab> {
     _version++;
   });
 
-  void _applyText() =>
-      _apply(_filter.copyWith(query: _search.text, city: _city.text));
+  void _applyText() => _apply(
+    _filter.copyWith(
+      query: _search.text,
+      city: _city.text,
+      audienceCity: _audienceCity.text,
+    ),
+  );
 
   Future<(List<CreatorSummary>, List<Shortlist>)> _load() async {
     final creators = await _service.searchCreators(_filter);
@@ -76,21 +83,23 @@ class _DiscoverCreatorsTabState extends State<DiscoverCreatorsTab> {
           controller: _search,
           textInputAction: TextInputAction.search,
           onSubmitted: (_) => _applyText(),
-          decoration: InputDecoration(
-            hintText: 'Search by name or handle',
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: IconButton(
-              tooltip: 'Search',
-              icon: const Icon(Icons.arrow_forward),
-              onPressed: _applyText,
+          decoration: pillInputDecoration(
+            hint: 'Search by name or handle',
+            icon: Icons.search,
+            suffix: Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: RoundIconButton(
+                icon: Icons.arrow_forward,
+                tooltip: 'Search',
+                dark: true,
+                size: 42,
+                onPressed: _applyText,
+              ),
             ),
           ),
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        FilterRow(
           children: [
             FilterDropdown<String?>(
               label: 'Niche',
@@ -106,16 +115,15 @@ class _DiscoverCreatorsTabState extends State<DiscoverCreatorsTab> {
             ),
             SizedBox(
               width: 170,
-              height: 40,
+              height: 42,
               child: TextField(
                 controller: _city,
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => _applyText(),
-                decoration: const InputDecoration(
-                  hintText: 'City',
-                  isDense: true,
-                  prefixIcon: Icon(Icons.place_outlined, size: 18),
-                  contentPadding: EdgeInsets.symmetric(vertical: 10),
+                decoration: pillInputDecoration(
+                  hint: 'City',
+                  icon: Icons.place_outlined,
+                  dense: true,
                 ),
               ),
             ),
@@ -125,12 +133,45 @@ class _DiscoverCreatorsTabState extends State<DiscoverCreatorsTab> {
               selected: _filter.verifiedOnly,
               onSelected: (v) => _apply(_filter.copyWith(verifiedOnly: v)),
             ),
+            FilterDropdown<AudienceFilter>(
+              label: 'Audience',
+              value: _filter.audience,
+              items: {for (final a in AudienceFilter.values) a: a.label},
+              onChanged: (v) => _apply(_filter.copyWith(audience: v)),
+            ),
+            SizedBox(
+              width: 200,
+              height: 42,
+              child: TextField(
+                key: const ValueKey('audience-city'),
+                controller: _audienceCity,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => _applyText(),
+                decoration: pillInputDecoration(
+                  hint: 'Audience city',
+                  icon: Icons.groups_outlined,
+                  dense: true,
+                ),
+              ),
+            ),
+            FilterDropdown<int>(
+              label: 'Quality',
+              value: _filter.minQuality,
+              items: const {
+                0: 'Any quality',
+                50: 'Quality 50+',
+                70: 'Quality 70+',
+                85: 'Quality 85+',
+              },
+              onChanged: (v) => _apply(_filter.copyWith(minQuality: v)),
+            ),
             FilterDropdown<CreatorSort>(
               label: 'Sort',
               value: _filter.sort,
               items: const {
                 CreatorSort.followers: 'Most followers',
                 CreatorSort.engagement: 'Best engagement',
+                CreatorSort.quality: 'Highest quality',
                 CreatorSort.newest: 'Newest on Shor',
               },
               onChanged: (v) => _apply(_filter.copyWith(sort: v)),
@@ -326,6 +367,8 @@ class CreatorCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           CreatorStats(creator: c),
+          const SizedBox(height: 8),
+          CreatorSignals(creator: c),
           if (c.niches.isNotEmpty) ...[
             const SizedBox(height: 10),
             Wrap(
@@ -345,5 +388,49 @@ class CreatorCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Quality score, rating and (when shared) audience, as compact chips.
+class CreatorSignals extends StatelessWidget {
+  const CreatorSignals({super.key, required this.creator});
+
+  final CreatorSummary creator;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = creator;
+    final audience = [
+      if (c.audFemaleShare != null)
+        c.audFemaleShare! >= 50
+            ? '${c.audFemaleShare!.round()}% women'
+            : '${(100 - c.audFemaleShare!).round()}% men',
+      if (c.audAge18to34Share != null)
+        '${c.audAge18to34Share!.round()}% aged 18–34',
+      if (c.audTopCities.isNotEmpty) c.audTopCities.take(2).join(', '),
+    ];
+    final chips = <Widget>[
+      if (c.qualityScore != null)
+        Tooltip(
+          message: c.qualityFlags.isEmpty
+              ? 'From public engagement, posting and follower growth'
+              : c.qualityFlags.join(' · '),
+          child: StatusChip(
+            'Quality ${c.qualityScore} · ${c.qualityLabel}',
+            icon: Icons.shield_outlined,
+            tone: c.qualityScore! >= 70
+                ? Tone.success
+                : c.qualityScore! >= 50
+                ? Tone.info
+                : Tone.warning,
+          ),
+        ),
+      if (c.rating.hasReviews)
+        StatusChip(c.rating.label, icon: Icons.star_rounded),
+      if (audience.isNotEmpty)
+        StatusChip(audience.join(' · '), icon: Icons.groups_outlined),
+    ];
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return Wrap(spacing: 6, runSpacing: 6, children: chips);
   }
 }

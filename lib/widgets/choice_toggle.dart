@@ -31,10 +31,10 @@ class ChoiceToggle<T> extends StatelessWidget {
 
   Widget _buildToggle(List<MapEntry<T, String>> entries) {
     return Container(
-      padding: const EdgeInsets.all(3),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.bgSecondary,
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: AppColors.border),
       ),
       child: Row(
@@ -53,14 +53,14 @@ class ChoiceToggle<T> extends StatelessWidget {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 7,
+                      horizontal: 16,
+                      vertical: 9,
                     ),
                     decoration: BoxDecoration(
                       color: e.key == selected
                           ? AppColors.navy
                           : Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
                       e.value,

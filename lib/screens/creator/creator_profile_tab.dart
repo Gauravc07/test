@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../backend/auth_service.dart';
 import '../../backend/marketplace_service.dart';
+import '../../config/app_config.dart';
 import '../../config/pricing.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -67,6 +68,12 @@ class CreatorProfileTab extends StatelessWidget {
                 ],
                 MediaKitCard(profile: profile, service: _service),
                 const SizedBox(height: 14),
+                // Needs Instagram, which store builds hide until Meta's review.
+                if (AppConfig.instagramEnabled ||
+                    profile.instagramVerified) ...[
+                  AudienceSharingCard(profile: profile, service: _service),
+                  const SizedBox(height: 14),
+                ],
                 _CreatorProfileForm(
                   profile: profile,
                   email: account.email,
@@ -215,13 +222,103 @@ class _MediaKitCardState extends State<MediaKitCard> {
               ],
             ),
           ],
-          if (!p.instagramVerified) ...[
+          if (!p.instagramVerified && AppConfig.instagramEnabled) ...[
             const SizedBox(height: 10),
             const Note(
               'Connect Instagram so your kit shows verified views, reach and '
               'audience. Without it, brands only see your profile and rates.',
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Opt in to audience search: brands can filter by, and see, the
+/// creator's audience breakdown.
+class AudienceSharingCard extends StatefulWidget {
+  const AudienceSharingCard({
+    super.key,
+    required this.profile,
+    required this.service,
+  });
+
+  final CreatorProfileData profile;
+  final MarketplaceService service;
+
+  @override
+  State<AudienceSharingCard> createState() => _AudienceSharingCardState();
+}
+
+class _AudienceSharingCardState extends State<AudienceSharingCard> {
+  late bool _on = widget.profile.shareAudience;
+  bool _busy = false;
+
+  Future<void> _set(bool on) async {
+    if (_busy) return;
+    if (on) {
+      final ok = await confirmAction(
+        context,
+        title: 'Show your audience to brands?',
+        message:
+            'Signed-in brands will see the share of your followers who are '
+            'women, aged 18–34 and in India, and your top cities, and can find '
+            'you by them. Never individual followers. Turn it off any time.',
+        confirmLabel: 'Show my audience',
+      );
+      if (!ok) return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.service.setShareAudience(on);
+      if (!mounted) return;
+      setState(() => _on = on);
+      showToast(
+        context,
+        on
+            ? 'Brands can now find you by your audience.'
+            : 'Your audience is private again.',
+      );
+    } on MarketplaceFailure catch (e) {
+      if (mounted) showToast(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final connected = widget.profile.instagramVerified;
+    return SectionCard(
+      child: Row(
+        children: [
+          const Icon(Icons.groups_outlined, color: AppColors.accent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Audience search',
+                  style: AppText.sans(size: 15, weight: FontWeight.w600),
+                ),
+                Text(
+                  !connected
+                      ? 'Connect Instagram first. Brands can then find you by who follows you.'
+                      : _on
+                      ? 'On. Brands looking for your audience can find you.'
+                      : 'Let brands find you by who follows you, e.g. women 18–34 in Pune.',
+                  style: AppText.sans(size: 13, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            key: const ValueKey('share-audience'),
+            value: _on,
+            onChanged: !connected || _busy ? null : _set,
+          ),
         ],
       ),
     );

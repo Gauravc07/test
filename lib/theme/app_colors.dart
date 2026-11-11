@@ -11,6 +11,12 @@ class AppColors {
   static const bgCard = Color(0xFFFFFFFF);
   static const bgHover = Color(0xFFF5F3EF);
 
+  /// Warm grey behind the signed-in app, so white cards stand out.
+  static const appBg = Color(0xFFF1EEE9);
+
+  /// Fill for chips, inner panels and inactive controls on white cards.
+  static const fill = Color(0xFFF4F2EE);
+
   /// Deep navy used for headings, dark sections, and the footer.
   static const navy = Color(0xFF0A1628);
 
@@ -40,6 +46,22 @@ class AppColors {
   // Sticky-note yellow for the "before" collage.
   static const note = Color(0xFFFDF6DD);
   static const noteBorder = Color(0xFFF1E4B3);
+
+  /// Navy-to-accent gradient for hero cards and the bottom bar.
+  static const heroGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF223F8F), navy],
+  );
+
+  /// Soft lift for white cards on [appBg].
+  static List<BoxShadow> get cardShadow => [
+    BoxShadow(
+      color: navy.withValues(alpha: 0.04),
+      blurRadius: 20,
+      offset: const Offset(0, 4),
+    ),
+  ];
 
   static Color white(double opacity) => Colors.white.withValues(alpha: opacity);
   static Color navyAlpha(double opacity) => navy.withValues(alpha: opacity);

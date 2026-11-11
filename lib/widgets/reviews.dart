@@ -6,6 +6,7 @@ import '../theme/app_text.dart';
 import '../utils/format.dart';
 import 'app_buttons.dart';
 import 'marketplace_widgets.dart';
+import 'safety.dart';
 
 const _star = Color(0xFFE8A317);
 
@@ -110,10 +111,18 @@ class StarPicker extends StatelessWidget {
 
 /// One published review.
 class ReviewTile extends StatelessWidget {
-  const ReviewTile(this.review, {super.key, this.showCampaign = true});
+  const ReviewTile(
+    this.review, {
+    super.key,
+    this.showCampaign = true,
+    this.service,
+  });
 
   final Review review;
   final bool showCampaign;
+
+  /// When set, other people's reviews get a Report button.
+  final MarketplaceService? service;
 
   @override
   Widget build(BuildContext context) {
@@ -133,13 +142,32 @@ class ReviewTile extends StatelessWidget {
             const SizedBox(height: 6),
             Text(r.comment!, style: AppText.sans(size: 15, height: 1.5)),
           ],
-          if (meta.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              meta,
-              style: AppText.sans(size: 12, color: AppColors.textMuted),
-            ),
-          ],
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  meta,
+                  style: AppText.sans(size: 12, color: AppColors.textMuted),
+                ),
+              ),
+              if (service != null && r.reviewerId != service!.currentUserId)
+                TextButton(
+                  key: ValueKey('report-review-${r.id}'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textMuted,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: () => showReportSheet(
+                    context,
+                    service: service!,
+                    target: ReportTarget.review,
+                    targetId: r.id,
+                    subject: 'this review',
+                  ),
+                  child: const Text('Report'),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -184,7 +212,7 @@ class ProfileReviews extends StatelessWidget {
               else
                 for (var i = 0; i < reviews.length; i++) ...[
                   if (i > 0) const Divider(height: 1, color: AppColors.border),
-                  ReviewTile(reviews[i]),
+                  ReviewTile(reviews[i], service: service),
                 ],
             ],
           ),
@@ -307,7 +335,7 @@ class _CollaborationReviewCardState extends State<CollaborationReviewCard> {
             style: AppText.label(),
           ),
           if (theirs != null)
-            ReviewTile(theirs, showCampaign: false)
+            ReviewTile(theirs, showCampaign: false, service: widget.service)
           else
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),

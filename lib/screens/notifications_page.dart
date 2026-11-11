@@ -8,18 +8,25 @@ import '../widgets/marketplace_widgets.dart';
 import 'chat_page.dart';
 import 'collaboration_page.dart';
 
-/// Bell with the number of unread notifications. Opens the inbox.
-class NotificationBell extends StatelessWidget {
+/// Round bell with the number of unread notifications. Opens the inbox.
+class NotificationBell extends StatefulWidget {
   const NotificationBell({super.key, this.service});
 
   final MarketplaceService? service;
 
-  MarketplaceService get _service => service ?? marketplaceService;
+  @override
+  State<NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<NotificationBell> {
+  // One live subscription for the bell's lifetime, not one per rebuild.
+  late final Stream<List<AppNotification>> _stream =
+      (widget.service ?? marketplaceService).notifications();
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<AppNotification>>(
-      stream: _service.notifications(),
+      stream: _stream,
       builder: (context, snapshot) {
         final unread = (snapshot.data ?? const [])
             .where((n) => n.unread)
@@ -27,26 +34,69 @@ class NotificationBell extends StatelessWidget {
         final label = unread == 0
             ? 'Notifications'
             : 'Notifications, $unread unread';
-        return IconButton(
+        return RoundIconButton(
           key: const ValueKey('notification-bell'),
+          icon: Icons.notifications_none,
           tooltip: label,
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => NotificationsPage(service: service),
+              builder: (_) => NotificationsPage(service: widget.service),
             ),
           ),
-          icon: Badge(
+          child: Badge(
             isLabelVisible: unread > 0,
-            backgroundColor: AppColors.accent,
-            label: Text(unread > 9 ? '9+' : '$unread'),
-            child: Icon(
-              unread > 0 ? Icons.notifications : Icons.notifications_none,
-              semanticLabel: label,
+            smallSize: 9,
+            backgroundColor: const Color(0xFFE5484D),
+            child: const Icon(
+              Icons.notifications_none,
+              size: 22,
+              color: AppColors.textPrimary,
             ),
           ),
         );
       },
     );
+  }
+}
+
+/// Opens what a notification is about and marks it read.
+Future<void> openNotification(
+  BuildContext context,
+  AppNotification n, {
+  MarketplaceService? service,
+}) async {
+  final svc = service ?? marketplaceService;
+  if (n.unread) {
+    // Best effort: opening still works if this fails.
+    svc.markNotificationsRead(n.id).ignore();
+  }
+  final nav = Navigator.of(context);
+  if (n.collaborationId != null) {
+    await nav.push(
+      MaterialPageRoute<void>(
+        builder: (_) => CollaborationPage(
+          collaborationId: n.collaborationId!,
+          service: service,
+        ),
+      ),
+    );
+  } else if (n.conversationId != null) {
+    try {
+      final conversations = await svc.conversations();
+      final match = conversations.where((c) => c.id == n.conversationId);
+      if (!context.mounted) return;
+      if (match.isEmpty) {
+        showToast(context, 'This chat is no longer available.');
+        return;
+      }
+      await nav.push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChatPage(conversation: match.first, service: service),
+        ),
+      );
+    } on MarketplaceFailure catch (e) {
+      if (context.mounted) showToast(context, e.message);
+    }
   }
 }
 
@@ -64,41 +114,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   MarketplaceService get _service => widget.service ?? marketplaceService;
   late final Stream<List<AppNotification>> _stream = _service.notifications();
 
-  Future<void> _open(AppNotification n) async {
-    if (n.unread) {
-      // Best effort: opening still works if this fails.
-      _service.markNotificationsRead(n.id).ignore();
-    }
-    final nav = Navigator.of(context);
-    if (n.collaborationId != null) {
-      await nav.push(
-        MaterialPageRoute<void>(
-          builder: (_) => CollaborationPage(
-            collaborationId: n.collaborationId!,
-            service: widget.service,
-          ),
-        ),
-      );
-    } else if (n.conversationId != null) {
-      try {
-        final conversations = await _service.conversations();
-        final match = conversations.where((c) => c.id == n.conversationId);
-        if (!mounted) return;
-        if (match.isEmpty) {
-          showToast(context, 'This chat is no longer available.');
-          return;
-        }
-        await nav.push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                ChatPage(conversation: match.first, service: widget.service),
-          ),
-        );
-      } on MarketplaceFailure catch (e) {
-        if (mounted) showToast(context, e.message);
-      }
-    }
-  }
+  Future<void> _open(AppNotification n) =>
+      openNotification(context, n, service: widget.service);
 
   @override
   Widget build(BuildContext context) {
@@ -175,6 +192,8 @@ IconData notificationIcon(String kind) => switch (kind) {
   'invoice_paid' => Icons.receipt_long_outlined,
   'message' => Icons.chat_bubble_outline,
   'review_received' => Icons.star_outline,
+  'sale' => Icons.shopping_bag_outlined,
+  'welcome' => Icons.waving_hand_outlined,
   _ => Icons.notifications_none,
 };
 
@@ -193,8 +212,10 @@ class _NotificationTile extends StatelessWidget {
       child: Material(
         color: n.unread ? AppColors.accentSoft : AppColors.bgCard,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: n.unread ? AppColors.accentSoft : AppColors.border,
+          ),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
