@@ -1,5 +1,5 @@
 // Configuration for the Instagram Edge Functions. Set the secrets with:
-//   npx supabase secrets set IG_APP_ID=... IG_APP_SECRET=... APP_URL=... \
+//   npx supabase secrets set IG_APP_ID=... IG_APP_SECRET=... IG_CONFIG_ID=... APP_URL=... \
 //     ALLOWED_RETURN_ORIGINS=... CRON_SECRET=...
 
 function required(name: string): string {
@@ -22,10 +22,12 @@ export const env = {
     return key;
   },
 
-  /** Instagram app ID and secret from Meta App Dashboard → Instagram → API setup with Instagram login. */
+  /** Meta app ID and secret from App Dashboard → App settings → Basic. */
   igAppId: () => required("IG_APP_ID"),
   igAppSecret: () => required("IG_APP_SECRET"),
-  graphVersion: () => Deno.env.get("IG_GRAPH_VERSION") ?? "v26.0",
+  /** Login configuration from Use cases → Instagram API → API setup with Unified login. Not secret. */
+  igConfigId: () => required("IG_CONFIG_ID"),
+  graphVersion: () => Deno.env.get("IG_GRAPH_VERSION") ?? "v27.0",
 
   /** Must be registered as an OAuth redirect URI in the Meta App Dashboard. */
   redirectUri: () =>

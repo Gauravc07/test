@@ -2,7 +2,7 @@
 // from Instagram and stores them. Runs with the service role.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { getProfile, graph, GraphError, type IgProfile, refreshLongLived } from "./instagram.ts";
+import { getProfile, graph, GraphError, type IgProfile } from "./instagram.ts";
 
 /** Account metrics fetched per day (all period=day, metric_type=total_value). */
 const DAILY_METRICS = [
@@ -47,20 +47,24 @@ export async function syncAccount(admin: SupabaseClient, accountId: string): Pro
     .update({ sync_started_at: new Date().toISOString() })
     .eq("id", accountId)
     .or(`sync_started_at.is.null,sync_started_at.lt."${lockCutoff}"`)
-    .select("id, creator_id, followers_count");
+    .select("id, creator_id, ig_user_id");
   if (!locked?.length) return { status: "busy", warnings };
   const creatorId: string = locked[0].creator_id;
+  // The Instagram account ID; every Graph call is addressed to it.
+  const igId: string = locked[0].ig_user_id;
 
   try {
-    let token = await loadToken(admin, accountId);
-    token = await refreshIfNeeded(admin, accountId, token);
+    const token = await loadToken(admin, accountId);
+    if (token.expiresAt && token.expiresAt.getTime() < Date.now()) {
+      throw new GraphError("Token expired", 190);
+    }
 
-    const profile = await getProfile(token.accessToken);
+    const profile = await getProfile(token.accessToken, igId);
     await saveProfile(admin, accountId, profile);
 
-    await syncDailyMetrics(admin, accountId, token.accessToken, warnings);
-    const media = await syncMedia(admin, accountId, creatorId, token.accessToken, warnings);
-    await syncAudience(admin, accountId, token.accessToken, warnings);
+    await syncDailyMetrics(admin, accountId, igId, token.accessToken, warnings);
+    const media = await syncMedia(admin, accountId, igId, creatorId, token.accessToken, warnings);
+    await syncAudience(admin, accountId, igId, token.accessToken, warnings);
     await mirrorPublicStats(admin, creatorId, profile, media);
 
     await admin.from("instagram_accounts").update({
@@ -89,7 +93,6 @@ export async function syncAccount(admin: SupabaseClient, accountId: string): Pro
 
 interface StoredToken {
   accessToken: string;
-  issuedAt: Date;
   expiresAt: Date | null;
 }
 
@@ -100,28 +103,8 @@ async function loadToken(admin: SupabaseClient, accountId: string): Promise<Stor
   if (!row?.access_token) throw new GraphError("No Instagram token stored", 190);
   return {
     accessToken: row.access_token,
-    issuedAt: new Date(row.issued_at),
     expiresAt: row.expires_at ? new Date(row.expires_at) : null,
   };
-}
-
-/** Refreshes when under 20 days remain (Meta requires the token be 24h+ old). */
-async function refreshIfNeeded(admin: SupabaseClient, accountId: string, token: StoredToken) {
-  if (token.expiresAt && token.expiresAt.getTime() < Date.now()) {
-    throw new GraphError("Token expired", 190);
-  }
-  const oldEnough = Date.now() - token.issuedAt.getTime() > DAY;
-  const expiringSoon = !token.expiresAt || token.expiresAt.getTime() - Date.now() < 20 * DAY;
-  if (!oldEnough || !expiringSoon) return token;
-
-  const fresh = await refreshLongLived(token.accessToken);
-  const { error } = await admin.rpc("ig_save_token", {
-    p_account_id: accountId,
-    p_token: fresh.accessToken,
-    p_expires_at: fresh.expiresAt.toISOString(),
-  });
-  if (error) throw new Error(`Could not save refreshed token: ${error.message}`);
-  return { accessToken: fresh.accessToken, issuedAt: new Date(), expiresAt: fresh.expiresAt };
 }
 
 export async function saveProfile(admin: SupabaseClient, accountId: string, p: IgProfile) {
@@ -153,6 +136,7 @@ export async function saveProfile(admin: SupabaseClient, accountId: string, p: I
 async function syncDailyMetrics(
   admin: SupabaseClient,
   accountId: string,
+  igId: string,
   token: string,
   warnings: string[],
 ) {
@@ -180,7 +164,7 @@ async function syncDailyMetrics(
     };
     let values: Record<string, number>;
     try {
-      values = readTotals(await graph("me/insights", token, { ...params, metric: usable.join(",") }));
+      values = readTotals(await graph(`${igId}/insights`, token, { ...params, metric: usable.join(",") }));
     } catch (e) {
       if (e instanceof GraphError && e.isAuthError) throw e;
       // Find which metrics fail, then keep using only the working ones.
@@ -188,7 +172,7 @@ async function syncDailyMetrics(
       const working: string[] = [];
       for (const metric of usable) {
         try {
-          Object.assign(values, readTotals(await graph("me/insights", token, { ...params, metric })));
+          Object.assign(values, readTotals(await graph(`${igId}/insights`, token, { ...params, metric })));
           working.push(metric);
         } catch (inner) {
           if (inner instanceof GraphError && inner.isAuthError) throw inner;
@@ -239,11 +223,12 @@ export function canonicalPermalink(url: string | null | undefined): string | nul
 async function syncMedia(
   admin: SupabaseClient,
   accountId: string,
+  igId: string,
   creatorId: string,
   token: string,
   warnings: string[],
 ): Promise<MediaRow[]> {
-  const body = await graph("me/media", token, { fields: MEDIA_FIELDS, limit: MEDIA_LIMIT });
+  const body = await graph(`${igId}/media`, token, { fields: MEDIA_FIELDS, limit: MEDIA_LIMIT });
   const items = (body.data as Array<Record<string, any>>) ?? [];
   const metricSet = { index: 0 };
   const rows: Record<string, unknown>[] = [];
@@ -349,12 +334,13 @@ async function mediaRow(
 async function syncAudience(
   admin: SupabaseClient,
   accountId: string,
+  igId: string,
   token: string,
   warnings: string[],
 ) {
   for (const breakdown of ["age", "gender", "country", "city"] as const) {
     try {
-      const body = await graph("me/insights", token, {
+      const body = await graph(`${igId}/insights`, token, {
         metric: "follower_demographics",
         period: "lifetime",
         metric_type: "total_value",

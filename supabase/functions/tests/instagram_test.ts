@@ -75,28 +75,42 @@ Deno.test("return URL allowlist", async () => {
   Deno.env.delete("ALLOWED_RETURN_SCHEMES");
 });
 
-Deno.test("token exchange parses both response shapes and strips #_", async () => {
+Deno.test("Unified login: dialog URL, code exchange and shared accounts", async () => {
   Deno.env.set("IG_APP_ID", "123");
   Deno.env.set("IG_APP_SECRET", SECRET);
+  Deno.env.set("IG_CONFIG_ID", "999");
   Deno.env.set("SUPABASE_URL", "https://example.supabase.co");
-  const { exchangeCode, GraphError } = await import("../_shared/instagram.ts");
-  const realFetch = globalThis.fetch;
-  let sentCode = "";
-  try {
-    globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      sentCode = new URLSearchParams(init.body as URLSearchParams).get("code") ?? "";
-      return new Response(JSON.stringify({
-        data: [{ access_token: "short", user_id: 42, permissions: "instagram_business_basic,instagram_business_manage_insights" }],
-      }));
-    }) as typeof fetch;
-    const wrapped = await exchangeCode("AQBcode#_");
-    assertEquals(sentCode, "AQBcode");
-    assertEquals(wrapped.userId, "42");
-    assertEquals(wrapped.permissions, ["instagram_business_basic", "instagram_business_manage_insights"]);
+  const { authorizeUrl, exchangeCode, sharedAccounts, GraphError } = await import("../_shared/instagram.ts");
 
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ access_token: "short", user_id: "7", permissions: ["instagram_business_basic"] }))) as typeof fetch;
-    assertEquals((await exchangeCode("x")).permissions, ["instagram_business_basic"]);
+  const dialog = new URL(authorizeUrl("st4te"));
+  assertEquals(dialog.host, "www.facebook.com");
+  assert(dialog.pathname.endsWith("/dialog/oauth"));
+  assertEquals(dialog.searchParams.get("config_id"), "999");
+  assertEquals(dialog.searchParams.get("state"), "st4te");
+  assertEquals(dialog.searchParams.get("redirect_uri"), "https://example.supabase.co/functions/v1/instagram-callback");
+
+  const realFetch = globalThis.fetch;
+  let called = new URL("https://x");
+  try {
+    globalThis.fetch = (async (url: URL) => {
+      called = new URL(url);
+      return new Response(JSON.stringify({ access_token: "suat", token_type: "bearer" }));
+    }) as typeof fetch;
+    const token = await exchangeCode("AQBcode#_");
+    assertEquals(called.host, "graph.facebook.com");
+    assertEquals(called.searchParams.get("code"), "AQBcode");
+    assertEquals(token.accessToken, "suat");
+    assertEquals(token.expiresAt, null); // never-expiring configuration
+
+    globalThis.fetch = (async () => new Response(JSON.stringify({ access_token: "t", expires_in: 3600 }))) as typeof fetch;
+    assert((await exchangeCode("x")).expiresAt instanceof Date);
+
+    globalThis.fetch = (async (url: URL) => {
+      called = new URL(url);
+      return new Response(JSON.stringify({ data: [{ id: "1784", username: "riya" }] }));
+    }) as typeof fetch;
+    assertEquals(await sharedAccounts("suat"), [{ id: "1784", username: "riya" }]);
+    assert(called.pathname.endsWith("/me/assigned_instagram_accounts"));
 
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ error: { message: "Invalid OAuth access token", code: 190 } }), { status: 400 })) as typeof fetch;

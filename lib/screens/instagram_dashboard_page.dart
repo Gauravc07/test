@@ -102,6 +102,9 @@ class _InstagramDashboardPageState extends State<InstagramDashboardPage> {
       'missing_permissions' =>
         'Shor needs both permissions (profile and insights) to build your '
             'dashboard. Please try again and keep both switched on.',
+      'no_account' =>
+        'No Instagram account was shared. Try again and tick your '
+            'Instagram account when Meta asks which accounts to share.',
       'already_linked' =>
         'That Instagram account is already linked to another Shor creator.',
       'expired' => 'That connection link expired. Please try again.',
@@ -1212,7 +1215,7 @@ class _ConnectCard extends StatelessWidget {
               const SizedBox(height: 4),
               point(
                 Icons.lock_outline,
-                'Ask for or see your Instagram password. You log in on Instagram itself.',
+                'Ask for or see your password. You log in on Instagram or Facebook itself.',
               ),
               point(Icons.block, 'Post, comment, or read your messages.'),
               point(
@@ -1228,7 +1231,9 @@ class _ConnectCard extends StatelessWidget {
                 ),
                 child: Text(
                   'You need an Instagram Creator or Business account. Switch for '
-                  'free in Instagram → Settings → Account type and tools.',
+                  'free in Instagram → Settings → Account type and tools. Meta '
+                  'then asks you to pick a business portfolio (it can create a '
+                  'free one) and the Instagram account to share with Shor.',
                   style: AppText.sans(size: 13, color: AppColors.textSecondary),
                 ),
               ),

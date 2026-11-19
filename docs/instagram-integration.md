@@ -2,6 +2,17 @@
 
 Last checked against Meta's documentation: 4 November 2026 (Graph API v26.0).
 
+> **Update, 19 November 2026:** Meta no longer offers "API setup with Instagram
+> login" to new apps, so Shor now uses the **Instagram API with Unified Login**
+> (Facebook Login for Business, `graph.facebook.com`). Creators log in with
+> Instagram or Facebook, choose a business portfolio and share their Instagram
+> account. Permissions: `instagram_basic` and `instagram_manage_insights`.
+> Secrets: `IG_APP_ID` and `IG_APP_SECRET` are the **Meta** app's (App settings →
+> Basic), and `IG_CONFIG_ID` is the login configuration (Use cases → Instagram
+> API → API setup with Unified login). Pick "never expires" for the token in the
+> configuration; Shor doesn't refresh tokens. Sections below that mention
+> Instagram Login describe the original design.
+
 ## The decision in short
 
 - Creators sign in to Shor with email, then **connect** their Instagram
@@ -127,8 +138,8 @@ before launch.
       and how to delete it. Meta Platform Terms §4.
 - [ ] **Data deletion request URL**: `…/functions/v1/instagram-meta/data-deletion`. Built.
 - [ ] **Deauthorize callback URL**: `…/functions/v1/instagram-meta/deauthorize`. Built.
-- [ ] **App Review** for Advanced Access to `instagram_business_basic` and
-      `instagram_business_manage_insights`. Submit a screencast of the whole
+- [ ] **App Review** for Advanced Access to `instagram_basic` and
+      `instagram_manage_insights`. Submit a screencast of the whole
       connect → dashboard → disconnect flow and explain each permission's use.
       Until approved, only accounts with a role on the app (testers) can connect.
 - [ ] **Annual Data Use Checkup** in the App Dashboard. Keep the app's details accurate (§7).

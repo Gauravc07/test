@@ -1,13 +1,18 @@
-// Minimal client for the Instagram API with Instagram Login.
-// Docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login
+// Minimal client for the Instagram API with Unified Login (built on
+// Facebook Login for Business). New Meta apps can't use "Instagram Login".
+// Docs: https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login
+//
+// The login returns a Business Integration System User token that belongs
+// to the creator's business portfolio. With it, `/me` is the system user,
+// so every call names the Instagram account ID instead.
 //
 // Access tokens travel only in request URLs to Meta. Never log URLs or
 // responses from these calls.
 
 import { env } from "./env.ts";
 
-/** Permissions we ask for. Only what the insights dashboard needs. */
-export const SCOPES = ["instagram_business_basic", "instagram_business_manage_insights"];
+/** Permissions in the login configuration. Only what the dashboard needs. */
+export const SCOPES = ["instagram_basic", "instagram_manage_insights"];
 
 export class GraphError extends Error {
   constructor(message: string, public code?: number, public httpStatus?: number) {
@@ -24,91 +29,70 @@ async function parse(res: Response): Promise<Record<string, unknown>> {
   const body = await res.json().catch(() => ({})) as Record<string, unknown>;
   const err = body.error as { message?: string; code?: number } | undefined;
   if (!res.ok || err) {
-    throw new GraphError(err?.message ?? `Instagram returned HTTP ${res.status}`, err?.code, res.status);
+    throw new GraphError(err?.message ?? `Meta returned HTTP ${res.status}`, err?.code, res.status);
   }
   return body;
 }
 
+/** The Facebook Login for Business dialog, offering Instagram or Facebook. */
 export function authorizeUrl(state: string): string {
-  const url = new URL("https://www.instagram.com/oauth/authorize");
+  const url = new URL(`https://www.facebook.com/${env.graphVersion()}/dialog/oauth`);
   url.searchParams.set("client_id", env.igAppId());
+  url.searchParams.set("config_id", env.igConfigId());
   url.searchParams.set("redirect_uri", env.redirectUri());
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", SCOPES.join(","));
   url.searchParams.set("state", state);
   return url.toString();
 }
 
-/** Exchanges the one-time code for a short-lived token (valid ~1 hour). */
-export async function exchangeCode(code: string) {
-  const res = await fetch("https://api.instagram.com/oauth/access_token", {
-    method: "POST",
-    body: new URLSearchParams({
-      client_id: env.igAppId(),
-      client_secret: env.igAppSecret(),
-      grant_type: "authorization_code",
-      redirect_uri: env.redirectUri(),
-      code: code.replace(/#_$/, ""),
-    }),
-  });
-  const body = await parse(res);
-  // The response is either flat or wrapped in data[0], depending on version.
-  const row = (Array.isArray(body.data) ? body.data[0] : body) as Record<string, unknown>;
-  const permissions = row.permissions;
-  return {
-    accessToken: String(row.access_token),
-    userId: String(row.user_id),
-    permissions: Array.isArray(permissions)
-      ? permissions.map(String)
-      : String(permissions ?? "").split(",").map((p) => p.trim()).filter(Boolean),
-  };
+export interface Token {
+  accessToken: string;
+  /** Null when the configuration issues tokens that never expire. */
+  expiresAt: Date | null;
 }
 
-/** Exchanges a short-lived token for a long-lived one (~60 days). */
-export async function exchangeLongLived(shortLived: string) {
-  const url = new URL("https://graph.instagram.com/access_token");
-  url.searchParams.set("grant_type", "ig_exchange_token");
+/** Exchanges the one-time code for the business system-user token. */
+export async function exchangeCode(code: string): Promise<Token> {
+  const url = new URL(`https://graph.facebook.com/${env.graphVersion()}/oauth/access_token`);
+  url.searchParams.set("client_id", env.igAppId());
   url.searchParams.set("client_secret", env.igAppSecret());
-  url.searchParams.set("access_token", shortLived);
-  return toToken(await parse(await fetch(url)));
-}
-
-/** Refreshes a long-lived token. It must be at least 24 hours old. */
-export async function refreshLongLived(token: string) {
-  const url = new URL("https://graph.instagram.com/refresh_access_token");
-  url.searchParams.set("grant_type", "ig_refresh_token");
-  url.searchParams.set("access_token", token);
-  return toToken(await parse(await fetch(url)));
-}
-
-function toToken(body: Record<string, unknown>) {
-  const expiresIn = Number(body.expires_in ?? 60 * 24 * 3600);
+  url.searchParams.set("redirect_uri", env.redirectUri());
+  url.searchParams.set("code", code.replace(/#_$/, ""));
+  const body = await parse(await fetch(url));
+  const expiresIn = Number(body.expires_in ?? 0);
   return {
     accessToken: String(body.access_token),
-    expiresAt: new Date(Date.now() + expiresIn * 1000),
+    expiresAt: expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000) : null,
   };
 }
 
-/** GET graph.instagram.com/{version}/{path}. */
+/** GET graph.facebook.com/{version}/{path}. */
 export async function graph(
   path: string,
   token: string,
   params: Record<string, string | number> = {},
 ): Promise<Record<string, unknown>> {
-  const url = new URL(`https://graph.instagram.com/${env.graphVersion()}/${path}`);
+  const url = new URL(`https://graph.facebook.com/${env.graphVersion()}/${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   url.searchParams.set("access_token", token);
   return parse(await fetch(url));
 }
 
+/** The Instagram accounts the creator shared during login. */
+export async function sharedAccounts(token: string): Promise<Array<{ id: string; username: string }>> {
+  const body = await graph("me/assigned_instagram_accounts", token, { fields: "id,username" });
+  return ((body.data as Array<Record<string, unknown>>) ?? [])
+    .filter((a) => a.id)
+    .map((a) => ({ id: String(a.id), username: String(a.username ?? "") }));
+}
+
 export const PROFILE_FIELDS = [
-  "user_id", "username", "name", "account_type", "profile_picture_url",
+  "id", "username", "name", "profile_picture_url",
   "followers_count", "follows_count", "media_count", "biography", "website",
 ].join(",");
 
 export interface IgProfile {
   id: string;
-  user_id?: string;
   username: string;
   name?: string;
   account_type?: string;
@@ -120,6 +104,6 @@ export interface IgProfile {
   website?: string;
 }
 
-export async function getProfile(token: string): Promise<IgProfile> {
-  return await graph("me", token, { fields: PROFILE_FIELDS }) as unknown as IgProfile;
+export async function getProfile(token: string, igId: string): Promise<IgProfile> {
+  return await graph(igId, token, { fields: PROFILE_FIELDS }) as unknown as IgProfile;
 }

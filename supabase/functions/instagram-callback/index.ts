@@ -1,14 +1,15 @@
-// GET — Instagram redirects here after the user approves (or cancels).
+// GET — Meta redirects here after the user approves (or cancels) the
+// Unified login (Instagram or Facebook, via Facebook Login for Business).
 // Register this URL as the OAuth redirect URI in the Meta App Dashboard:
 //   https://<project-ref>.supabase.co/functions/v1/instagram-callback
 //
-// Validates the one-time state, exchanges the code for a long-lived token,
+// Validates the one-time state, exchanges the code for the business token,
 // stores the token in Vault, starts the first sync in the background, and
 // sends the user back to the app with ?instagram=connected|error.
 
 import { env, isAllowedReturnUrl } from "../_shared/env.ts";
 import { redirect } from "../_shared/http.ts";
-import { exchangeCode, exchangeLongLived, getProfile, SCOPES } from "../_shared/instagram.ts";
+import { exchangeCode, getProfile, SCOPES, sharedAccounts } from "../_shared/instagram.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import { saveProfile, syncAccount } from "../_shared/sync.ts";
 
@@ -34,19 +35,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const short = await exchangeCode(params.get("code")!);
-    if (!SCOPES.every((s) => short.permissions.includes(s))) {
-      return back(state.return_to, "error", "missing_permissions");
-    }
-    const longLived = await exchangeLongLived(short.accessToken);
-    const profile = await getProfile(longLived.accessToken);
-    if (profile.account_type && !["BUSINESS", "MEDIA_CREATOR"].includes(profile.account_type)) {
-      return back(state.return_to, "error", "not_professional");
-    }
+    const token = await exchangeCode(params.get("code")!);
+    // Only professional accounts can be shared, so this is never personal.
+    // If several were shared, Shor links the first one.
+    const shared = await sharedAccounts(token.accessToken);
+    if (!shared.length) return back(state.return_to, "error", "no_account");
+    const igId = shared[0].id;
+    const profile = await getProfile(token.accessToken, igId);
 
     // An Instagram account can belong to only one Shor creator.
     const { data: owner } = await admin.from("instagram_accounts")
-      .select("creator_id").eq("ig_user_id", short.userId).maybeSingle();
+      .select("creator_id").eq("ig_user_id", igId).maybeSingle();
     if (owner && owner.creator_id !== state.creator_id) {
       return back(state.return_to, "error", "already_linked");
     }
@@ -54,15 +53,15 @@ Deno.serve(async (req) => {
     // Switching to a different Instagram account replaces the old one entirely.
     const { data: previous } = await admin.from("instagram_accounts")
       .select("ig_user_id").eq("creator_id", state.creator_id).maybeSingle();
-    if (previous && previous.ig_user_id !== short.userId) {
+    if (previous && previous.ig_user_id !== igId) {
       await admin.rpc("ig_delete_by_ig_user", { p_ig_user_id: previous.ig_user_id });
     }
 
     const { data: account, error } = await admin.from("instagram_accounts").upsert({
       creator_id: state.creator_id,
-      ig_user_id: short.userId,
+      ig_user_id: igId,
       username: profile.username,
-      granted_scopes: short.permissions,
+      granted_scopes: SCOPES,
       status: "active",
       connected_at: new Date().toISOString(),
       last_sync_error: null,
@@ -71,8 +70,8 @@ Deno.serve(async (req) => {
 
     const { error: tokenError } = await admin.rpc("ig_save_token", {
       p_account_id: account.id,
-      p_token: longLived.accessToken,
-      p_expires_at: longLived.expiresAt.toISOString(),
+      p_token: token.accessToken,
+      p_expires_at: token.expiresAt?.toISOString() ?? null,
     });
     if (tokenError) throw new Error(`Saving token failed: ${tokenError.message}`);
     await saveProfile(admin, account.id, profile);
