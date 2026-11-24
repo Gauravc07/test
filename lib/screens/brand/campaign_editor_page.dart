@@ -49,6 +49,16 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
     text: _d.minFollowers == 0 ? '' : _d.minFollowers.toString(),
   );
   late final _cities = TextEditingController(text: _d.cities.join(', '));
+  late final _commission = TextEditingController(
+    text: _d.commissionRate == null
+        ? ''
+        : formatPercent(_d.commissionRate!).replaceAll('%', ''),
+  );
+  late final _holdDays = TextEditingController(
+    text: _d.commissionHoldDays.toString(),
+  );
+
+  bool get _hasCommission => (num.tryParse(_commission.text.trim()) ?? 0) > 0;
 
   bool _busy = false;
   String? _error;
@@ -70,6 +80,8 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
       _slots,
       _minFollowers,
       _cities,
+      _commission,
+      _holdDays,
     ]) {
       c.dispose();
     }
@@ -105,6 +117,8 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
       ..landingUrl = _landing.text
       ..productDetails = _product.text
       ..payoutPerCreator = num.tryParse(_payout.text.trim())
+      ..commissionRate = num.tryParse(_commission.text.trim())
+      ..commissionHoldDays = int.tryParse(_holdDays.text.trim()) ?? 14
       ..budget = num.tryParse(_budget.text.trim())
       ..creatorSlots = int.tryParse(_slots.text.trim())
       ..minFollowers = int.tryParse(_minFollowers.text.trim()) ?? 0
@@ -326,9 +340,9 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
                         validator: (v) {
                           final value = (v ?? '').trim();
                           if (value.isEmpty) {
-                            return _d.acceptsQuotes
+                            return _d.acceptsQuotes || _hasCommission
                                 ? null
-                                : 'Enter the payment, or let creators quote';
+                                : 'Enter the payment, let creators quote, or pay commission';
                           }
                           return _optionalNumber(value, min: 0);
                         },
@@ -352,6 +366,64 @@ class _CampaignEditorPageState extends State<CampaignEditorPage> {
                       ),
                     ],
                     if (barter) const Note(barterFeeNote),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            key: const ValueKey('commission-rate'),
+                            controller: _commission,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              labelText: 'Sales commission (%)',
+                              hintText: 'e.g. 10',
+                              helperText:
+                                  'Optional. Paid on each order a creator drives',
+                              helperMaxLines: 2,
+                            ),
+                            validator: (v) {
+                              final t = (v ?? '').trim();
+                              if (t.isEmpty) return null;
+                              final n = num.tryParse(t);
+                              return n == null || n <= 0 || n > 50
+                                  ? 'Between 0.1 and 50'
+                                  : null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            key: const ValueKey('commission-hold'),
+                            controller: _holdDays,
+                            enabled: _hasCommission,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Return window (days)',
+                              helperText: 'Orders count after this many days',
+                              helperMaxLines: 2,
+                            ),
+                            validator: (v) {
+                              if (!_hasCommission) return null;
+                              final n = int.tryParse((v ?? '').trim());
+                              return n == null || n < 0 || n > 60
+                                  ? '0 to 60 days'
+                                  : null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_hasCommission)
+                      const Note(
+                        'Commission is worked out from orders on your connected '
+                        'store that used the creator’s link or code. Add a landing '
+                        'page above and connect your store in Account.',
+                      ),
                     if (product) ...[
                       const SizedBox(height: 8),
                       TextFormField(

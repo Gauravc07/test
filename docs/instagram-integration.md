@@ -184,7 +184,7 @@ Rules notified 13 November 2025. Core duties apply from **13 May 2027**.
    *API setup with Instagram login*.
    - Copy the **Instagram app ID** and **Instagram app secret**.
    - Add the OAuth redirect URI
-     `https://tnevsivuemhlrlclpfuw.supabase.co/functions/v1/instagram-callback`.
+     `https://xgewpzejhgcmpmsbiatc.supabase.co/functions/v1/instagram-callback`.
    - Under Business login settings, set the deauthorize and data-deletion URLs listed above.
    - App roles → Roles → **Instagram testers**: add the Instagram account
      you will test with, by username. Its owner accepts the invite in
@@ -194,7 +194,7 @@ Rules notified 13 November 2025. Core duties apply from **13 May 2027**.
 2. **Deploy the functions.** You need a Supabase access token
    (`npx supabase login`).
    ```bash
-   npx supabase link --project-ref tnevsivuemhlrlclpfuw
+   npx supabase link --project-ref xgewpzejhgcmpmsbiatc
    npx supabase secrets set \
      IG_APP_ID=... IG_APP_SECRET=... \
      APP_URL=https://<your-web-app> \
@@ -210,7 +210,7 @@ Rules notified 13 November 2025. Core duties apply from **13 May 2027**.
    ```sql
    select cron.schedule('instagram-daily-sync', '30 2 * * *', $$
      select net.http_post(
-       url := 'https://tnevsivuemhlrlclpfuw.supabase.co/functions/v1/instagram-sync',
+       url := 'https://xgewpzejhgcmpmsbiatc.supabase.co/functions/v1/instagram-sync',
        headers := jsonb_build_object(
          'Content-Type', 'application/json',
          'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets

@@ -38,6 +38,12 @@ const _months = [
   'Dec',
 ];
 
+/// "10%", "7.5%": whole numbers without decimals.
+String formatPercent(num value) {
+  final rounded = (value * 10).round() / 10;
+  return rounded % 1 == 0 ? '${rounded.toInt()}%' : '$rounded%';
+}
+
 /// ₹1,20,000 for rupees (Indian grouping), $1,200 / €1,200 otherwise.
 /// Paise are shown only when present.
 String formatMoney(num? amount, {String currency = 'INR'}) {

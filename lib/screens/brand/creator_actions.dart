@@ -28,6 +28,222 @@ Future<bool> showInviteSheet(
   return sent == true;
 }
 
+/// Invites every creator in [creators] to one campaign. Returns how many
+/// were invited.
+Future<int> showBulkInviteSheet(
+  BuildContext context, {
+  required MarketplaceService service,
+  required List<CreatorSummary> creators,
+  Campaign? campaign,
+}) async {
+  final sent = await showModalBottomSheet<int>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: AppColors.bgCard,
+    builder: (_) => BulkInviteSheet(
+      service: service,
+      creators: creators,
+      campaign: campaign,
+    ),
+  );
+  if (sent != null && context.mounted) {
+    final skipped = creators.length - sent;
+    showToast(
+      context,
+      sent == 0
+          ? 'Everyone here is already on that campaign.'
+          : 'Invited $sent creator${sent == 1 ? '' : 's'}'
+                '${skipped > 0 ? '. $skipped already on the campaign were skipped' : ''}.',
+    );
+  }
+  return sent ?? 0;
+}
+
+class BulkInviteSheet extends StatefulWidget {
+  const BulkInviteSheet({
+    super.key,
+    required this.service,
+    required this.creators,
+    this.campaign,
+  });
+
+  final MarketplaceService service;
+  final List<CreatorSummary> creators;
+  final Campaign? campaign;
+
+  @override
+  State<BulkInviteSheet> createState() => _BulkInviteSheetState();
+}
+
+class _BulkInviteSheetState extends State<BulkInviteSheet> {
+  final _offer = TextEditingController();
+  List<Campaign>? _campaigns;
+  Campaign? _selected;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.campaign != null) {
+      _campaigns = [widget.campaign!];
+      _select(widget.campaign!);
+    } else {
+      _loadCampaigns();
+    }
+  }
+
+  Future<void> _loadCampaigns() async {
+    try {
+      final all = await widget.service.myCampaigns();
+      final usable = all.where((c) => c.canInvite).toList();
+      if (!mounted) return;
+      setState(() => _campaigns = usable);
+      if (usable.isNotEmpty) _select(usable.first);
+    } on MarketplaceFailure catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  void _select(Campaign c) => setState(() {
+    _selected = c;
+    _offer.text = c.payoutPerCreator?.round().toString() ?? '';
+  });
+
+  @override
+  void dispose() {
+    _offer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final c = _selected;
+    if (c == null || _busy) return;
+    final offer = num.tryParse(_offer.text.trim());
+    if (!c.isBarter && offer == null && !c.paysCommission) {
+      setState(
+        () => _error = 'Enter an offer, or use a campaign with commission.',
+      );
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final n = await widget.service.inviteMany(c.id, [
+        for (final cr in widget.creators) cr.id,
+      ], offer: c.isBarter ? null : offer);
+      if (mounted) Navigator.of(context).pop(n);
+    } on MarketplaceFailure catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final campaigns = _campaigns;
+    final selected = _selected;
+    final n = widget.creators.length;
+    final plural = n == 1 ? '' : 's';
+    final names = [for (final c in widget.creators.take(4)) c.displayName];
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Invite $n creator$plural', style: AppText.heading(22)),
+                const SizedBox(height: 6),
+                Text(
+                  names.join(', ') + (n > 4 ? ' and ${n - 4} more' : ''),
+                  style: AppText.sans(size: 14, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                if (campaigns == null && _error == null)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (campaigns != null && campaigns.isEmpty)
+                  const Note(
+                    'You need a draft, live or paused campaign to invite '
+                    'creators. Create one from the Campaigns tab first.',
+                  )
+                else if (campaigns != null && selected != null) ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: selected.id,
+                    decoration: const InputDecoration(labelText: 'Campaign'),
+                    items: [
+                      for (final c in campaigns)
+                        DropdownMenuItem(
+                          value: c.id,
+                          child: Text(c.title, overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: _busy || widget.campaign != null
+                        ? null
+                        : (id) =>
+                              _select(campaigns.firstWhere((c) => c.id == id)),
+                  ),
+                  const SizedBox(height: 14),
+                  if (selected.isBarter)
+                    const Note('Barter campaign: creators receive the product.')
+                  else
+                    TextField(
+                      key: const ValueKey('bulk-offer'),
+                      controller: _offer,
+                      enabled: !_busy,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Offer per creator (₹)',
+                        helperText: selected.paysCommission
+                            ? 'Optional: they also earn '
+                                  '${formatPercent(selected.commissionRate!)} of sales'
+                            : 'Everyone gets the same offer. Adjust per creator in chat.',
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  const Note(
+                    'Anyone already invited to or working on this campaign is '
+                    'skipped. Each creator gets a notification and can accept '
+                    'or decline.',
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: AppText.sans(
+                      size: 14,
+                      color: const Color(0xFF9B1C1C),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                if (selected != null)
+                  SolidButton(
+                    key: const ValueKey('bulk-invite-send'),
+                    label: _busy ? 'Inviting…' : 'Invite $n creator$plural',
+                    fullWidth: true,
+                    onPressed: _send,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Opens the "save to list" sheet.
 Future<void> showShortlistSheet(
   BuildContext context, {
@@ -202,13 +418,25 @@ class _InviteSheetState extends State<InviteSheet> {
                         ),
                         validator: (v) {
                           final value = (v ?? '').trim();
-                          if (value.isEmpty) return 'Enter an amount';
+                          if (value.isEmpty) {
+                            return selected.paysCommission
+                                ? null
+                                : 'Enter an amount';
+                          }
                           final n = num.tryParse(value);
                           return n == null || n < 0
                               ? 'Enter an amount in rupees'
                               : null;
                         },
                       ),
+                    if (selected.paysCommission) ...[
+                      const SizedBox(height: 8),
+                      Note(
+                        'Plus ${formatPercent(selected.commissionRate!)} commission '
+                        'on the sales they drive.',
+                        icon: Icons.shopping_bag_outlined,
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     TextFormField(
                       controller: _message,

@@ -202,6 +202,18 @@ class _DiscoverCreatorsTabState extends State<DiscoverCreatorsTab> {
                         color: AppColors.textSecondary,
                       ),
                     ),
+                    if (creators.length > 1)
+                      SmallButton(
+                        key: const ValueKey('invite-all'),
+                        label: 'Invite all ${creators.length}',
+                        outlined: true,
+                        onPressed: () => showBulkInviteSheet(
+                          context,
+                          service: _service,
+                          creators: creators,
+                          campaign: campaign,
+                        ),
+                      ),
                     if (lists.isNotEmpty)
                       FilterDropdown<String?>(
                         label: 'List',

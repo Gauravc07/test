@@ -16,6 +16,7 @@ import '../collaboration_page.dart';
 import '../creator/discover_campaigns_tab.dart' show CampaignFacts;
 import 'campaign_editor_page.dart';
 import 'discover_creators_tab.dart';
+import 'store_connections.dart';
 
 typedef _CampaignData = ({
   Campaign campaign,
@@ -23,6 +24,7 @@ typedef _CampaignData = ({
   List<LivePost> posts,
   List<Invoice> invoices,
   List<SalesRow> sales,
+  bool storeConnected,
 });
 
 enum _Tab { applications, invited, hired, report }
@@ -53,12 +55,17 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
         .where((i) => ids.contains(i.collaborationId))
         .toList();
     final sales = await _service.campaignSales(widget.campaignId);
+    final tracksSales =
+        campaign.paysCommission || (campaign.landingUrl ?? '').isNotEmpty;
+    final storeConnected =
+        !tracksSales || (await _service.storeConnections()).isNotEmpty;
     return (
       campaign: campaign,
       collabs: collabs,
       posts: posts,
       invoices: invoices,
       sales: sales,
+      storeConnected: storeConnected,
     );
   }
 
@@ -110,6 +117,13 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
             maxWidth: 960,
             children: [
               _header(data.campaign, hired.length),
+              if (!data.storeConnected) ...[
+                const SizedBox(height: 14),
+                ConnectStoreBanner(
+                  service: _service,
+                  commission: data.campaign.paysCommission,
+                ),
+              ],
               const SizedBox(height: 18),
               Align(
                 alignment: Alignment.centerLeft,
@@ -430,7 +444,9 @@ class _BrandCampaignPageState extends State<BrandCampaignPage> {
             icon: Icons.currency_rupee,
             label: 'Total cost',
             value: report.money(report.cost),
-            caption: 'Invoices incl. Shor fee and GST, else agreed fees',
+            caption: report.commission > 0
+                ? 'Fees incl. Shor fee and GST, plus ${report.money(report.commission)} commission'
+                : 'Invoices incl. Shor fee and GST, else agreed fees',
           ),
           MetricTile(
             icon: Icons.speed,

@@ -52,7 +52,7 @@ People can turn emails off in Help and settings → Email notifications.
    ```sql
    select cron.schedule('notification-emails', '*/2 * * * *', $$
      select net.http_post(
-       url := 'https://tnevsivuemhlrlclpfuw.supabase.co/functions/v1/notifications-email',
+       url := 'https://xgewpzejhgcmpmsbiatc.supabase.co/functions/v1/notifications-email',
        headers := jsonb_build_object(
          'Content-Type', 'application/json',
          'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets

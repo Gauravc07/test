@@ -9,7 +9,7 @@
     { "source": "/kit/:handle", "destination": "/" },
     {
       "source": "/go/:code",
-      "destination": "https://tnevsivuemhlrlclpfuw.supabase.co/functions/v1/go/:code"
+      "destination": "https://xgewpzejhgcmpmsbiatc.supabase.co/functions/v1/go/:code"
     }
   ],
   "headers": [

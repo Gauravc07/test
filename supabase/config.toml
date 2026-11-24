@@ -1,5 +1,5 @@
 # Supabase CLI settings for deploying the Edge Functions.
-# Project: tnevsivuemhlrlclpfuw (link with `npx supabase link`).
+# Project: xgewpzejhgcmpmsbiatc (link with `npx supabase link`).
 project_id = "shor"
 
 # Every function checks the caller itself: user sessions are verified with

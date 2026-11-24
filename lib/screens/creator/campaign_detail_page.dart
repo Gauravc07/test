@@ -223,6 +223,12 @@ class CampaignBrief {
           children: [
             const SectionTitle('What to post'),
             InfoRow('Deliverables', deliverablesSummary(c.deliverables)),
+            if (c.paysCommission)
+              InfoRow(
+                'Sales commission',
+                '${formatPercent(c.commissionRate!)} of every order from your '
+                    'link or code, after a ${c.commissionHoldDays}-day return window',
+              ),
             InfoRow('Platform', 'Instagram'),
             InfoRow('Goal', c.objective.label),
             if (c.niche != null) InfoRow('Niche', c.niche!),

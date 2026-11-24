@@ -222,6 +222,76 @@ class WebhookUrlField extends StatelessWidget {
 
 /// Step-by-step setup for one platform. Shopify shows its own signing
 /// secret; for WooCommerce, Shor makes one for the brand to paste in.
+/// Shown on a campaign that tracks sales while the brand has no store
+/// connected: without it, no orders (or commission) are counted.
+class ConnectStoreBanner extends StatelessWidget {
+  const ConnectStoreBanner({
+    super.key,
+    required this.service,
+    this.commission = false,
+  });
+
+  final MarketplaceService service;
+
+  /// The campaign pays sales commission, so creators depend on it too.
+  final bool commission;
+
+  void _open(BuildContext context, StorePlatform platform) =>
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => ConnectStoreSheet(platform: platform, service: service),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      key: const ValueKey('connect-store-banner'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.storefront_outlined, color: AppColors.accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Connect your store to count sales',
+                  style: AppText.sans(size: 16, weight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            commission
+                ? 'This campaign pays commission on sales, but no store is '
+                      'connected, so no orders are counted and creators earn '
+                      'nothing yet. It takes about 2 minutes.'
+                : 'Creators’ tracked links are ready, but no store is connected, '
+                      'so orders and revenue per creator aren’t counted yet. It '
+                      'takes about 2 minutes.',
+            style: AppText.sans(size: 14, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              for (final p in StorePlatform.values)
+                SmallButton(
+                  label: 'Connect ${p.label}',
+                  onPressed: () => _open(context, p),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ConnectStoreSheet extends StatefulWidget {
   const ConnectStoreSheet({
     super.key,

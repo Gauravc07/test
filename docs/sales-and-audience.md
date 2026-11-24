@@ -102,9 +102,34 @@ these steps once:
 3. **Vault secrets** (Supabase SQL editor). The schedule does nothing until
    both exist:
    ```sql
-   select vault.create_secret('https://tnevsivuemhlrlclpfuw.supabase.co', 'shor_project_url');
+   select vault.create_secret('https://xgewpzejhgcmpmsbiatc.supabase.co', 'shor_project_url');
    select vault.create_secret('<same CRON_SECRET>', 'shor_cron_secret');
    ```
 
 New accounts get a welcome notification, emailed if they haven't opened the
 app within 2 minutes.
+
+## Pay-for-sales commission
+
+Migration `20261123000000_sales_commission.sql`.
+
+- A campaign can pay creators a **commission**, a percent of each order they
+  drive (tracked link or discount code), with or without a fixed fee. Set
+  it in the campaign editor under "What you offer", with a **return
+  window** (default 14 days) before an order counts.
+- The rate is copied onto each deal when it's created. The brand can change
+  it until the creator is hired; creators never can.
+- On a hired deal, the **Sales commission** card shows earned (orders past
+  the return window, not cancelled), still in the return window, and ready
+  to request. The creator taps **Request** to turn the earned amount into a
+  commission invoice (`request_commission_payout`). The app can't write a
+  commission invoice with its own amount. A rejected invoice frees the
+  amount again.
+- The campaign report counts commission owed (earned plus pending) in the
+  creator's cost, so cost per order and return on spend stay honest. The
+  CSV has a Commission column.
+- Campaigns with a landing page or commission show a **Connect your store**
+  banner until a store is connected.
+- **Invite all**: Find creators has an "Invite all N" button that invites
+  everyone shown (e.g. a filtered shortlist) to one campaign, skipping anyone
+  already on it.

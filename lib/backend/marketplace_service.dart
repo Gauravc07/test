@@ -79,6 +79,14 @@ abstract interface class MarketplaceService {
     String? message,
   });
 
+  /// Invites several creators at once, e.g. a whole shortlist. Skips anyone
+  /// already on the campaign. Returns how many were invited.
+  Future<int> inviteMany(
+    String campaignId,
+    List<String> creatorIds, {
+    num? offer,
+  });
+
   Future<List<Shortlist>> shortlists();
 
   Future<Shortlist> createShortlist(String name);
@@ -196,6 +204,12 @@ abstract interface class MarketplaceService {
 
   /// Brand only. Null clears the code.
   Future<void> setDiscountCode(String collaborationId, String? code);
+
+  /// Commission earned, pending and requestable on one deal.
+  Future<CommissionSummary> commissionSummary(String collaborationId);
+
+  /// Creator only: invoices all earned commission not yet requested.
+  Future<void> requestCommission(String collaborationId);
 
   Future<List<StoreConnection>> storeConnections();
 
@@ -649,6 +663,34 @@ class SupabaseMarketplaceService implements MarketplaceService {
       );
       await sendMessage(conversation.id, text);
     }
+  });
+
+  @override
+  Future<int> inviteMany(
+    String campaignId,
+    List<String> creatorIds, {
+    num? offer,
+  }) => _mutate(() async {
+    final existing = await _db
+        .from('collaborations')
+        .select('creator_id')
+        .eq('campaign_id', campaignId);
+    final taken = {for (final r in existing) r['creator_id'] as String};
+    final fresh = [
+      for (final id in creatorIds.toSet())
+        if (!taken.contains(id)) id,
+    ];
+    if (fresh.isEmpty) return 0;
+    await _db.from('collaborations').insert([
+      for (final id in fresh)
+        {
+          'campaign_id': campaignId,
+          'creator_id': id,
+          'status': 'invited',
+          'agreed_amount': offer,
+        },
+    ]);
+    return fresh.length;
   });
 
   @override
@@ -1159,6 +1201,30 @@ class SupabaseMarketplaceService implements MarketplaceService {
       for (final r in rows)
         SalesRow.fromRow(Map<String, dynamic>.from(r as Map)),
     ];
+  });
+
+  @override
+  Future<CommissionSummary> commissionSummary(String collaborationId) =>
+      _guard(() async {
+        final rows =
+            await _db.rpc(
+                  'commission_summary',
+                  params: {'p_collab': collaborationId},
+                )
+                as List;
+        return rows.isEmpty
+            ? const CommissionSummary()
+            : CommissionSummary.fromRow(
+                Map<String, dynamic>.from(rows.first as Map),
+              );
+      });
+
+  @override
+  Future<void> requestCommission(String collaborationId) => _mutate(() async {
+    await _db.rpc(
+      'request_commission_payout',
+      params: {'p_collab': collaborationId},
+    );
   });
 
   @override

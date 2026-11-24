@@ -114,7 +114,7 @@ the public key ID.
 2. Ask Razorpay sales two things in writing: whether Shor qualifies for
    Route, and what Route costs.
 3. In the Razorpay Dashboard, add the webhook URL
-   `https://tnevsivuemhlrlclpfuw.supabase.co/functions/v1/payments-webhook`
+   `https://xgewpzejhgcmpmsbiatc.supabase.co/functions/v1/payments-webhook`
    with the events `payment.captured`, `payment.failed`, `order.paid` and,
    for Route, `transfer.processed`.
 

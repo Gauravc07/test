@@ -116,7 +116,7 @@ deno test --allow-env supabase/functions/tests/
 
 ## Backend
 
-The database is Supabase project `tnevsivuemhlrlclpfuw`. Its schema lives in
+The database is Supabase project `xgewpzejhgcmpmsbiatc`. Its schema lives in
 `supabase/migrations/`, and the first migration is already applied.
 
 | Table | Holds |
@@ -187,6 +187,6 @@ To change the schema, add a new file to `supabase/migrations/` and apply it
 with the [Supabase CLI](https://supabase.com/docs/guides/cli):
 
 ```bash
-npx supabase link --project-ref tnevsivuemhlrlclpfuw
+npx supabase link --project-ref xgewpzejhgcmpmsbiatc
 npx supabase db push
 ```

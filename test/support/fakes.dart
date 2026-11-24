@@ -200,6 +200,25 @@ class FakeMarketplace implements MarketplaceService {
     );
   }
 
+  /// Adds or replaces a campaign (test setup).
+  Campaign addCampaign({
+    required String id,
+    required String title,
+    CampaignStatus status = CampaignStatus.active,
+    num? payout,
+    bool acceptsQuotes = false,
+    num? commissionRate,
+    String? landingUrl,
+  }) => campaigns[id] = _campaign(
+    id: id,
+    title: title,
+    status: status,
+    payout: payout,
+    acceptsQuotes: acceptsQuotes,
+    commissionRate: commissionRate,
+    landingUrl: landingUrl,
+  );
+
   Campaign _campaign({
     required String id,
     required String title,
@@ -212,6 +231,9 @@ class FakeMarketplace implements MarketplaceService {
     String? productDetails,
     Map<String, int> deliverables = const {'reels': 1},
     int? slots,
+    num? commissionRate,
+    int commissionHoldDays = 14,
+    String? landingUrl,
   }) => Campaign(
     id: id,
     brandId: brandId,
@@ -226,6 +248,9 @@ class FakeMarketplace implements MarketplaceService {
     productDetails: productDetails,
     deliverables: deliverables,
     creatorSlots: slots,
+    commissionRate: commissionRate,
+    commissionHoldDays: commissionHoldDays,
+    landingUrl: landingUrl,
     description: 'Show how the product fits your routine.',
     guidelines: 'Tag @acme and use #ad.',
     createdAt: DateTime(2026, 11, 1),
@@ -238,6 +263,9 @@ class FakeMarketplace implements MarketplaceService {
     compensation: c.compensation,
     visibility: c.visibility,
     payout: c.payoutPerCreator,
+    commissionRate: c.commissionRate,
+    commissionHoldDays: c.commissionHoldDays,
+    landingUrl: c.landingUrl,
     acceptsQuotes: c.acceptsQuotes,
     niche: c.niche,
     productDetails: c.productDetails,
@@ -257,6 +285,7 @@ class FakeMarketplace implements MarketplaceService {
     status: status ?? c.status,
     pitch: c.pitch,
     agreedAmount: c.agreedAmount,
+    commissionRate: c.commissionRate,
     deliverables: c.deliverables,
     campaign: embed ? campaigns[c.campaignId] : null,
     creator: embed ? creators[c.creatorId] : null,
@@ -278,6 +307,7 @@ class FakeMarketplace implements MarketplaceService {
       status: status,
       pitch: pitch,
       agreedAmount: amount,
+      commissionRate: campaigns[campaignId]?.commissionRate,
       deliverables: const {'reels': 1},
     );
     collabs[c.id] = c;
@@ -456,6 +486,13 @@ class FakeMarketplace implements MarketplaceService {
           if (e.value > 0) e.key: e.value,
       },
       slots: draft.creatorSlots,
+      commissionRate: (draft.commissionRate ?? 0) > 0
+          ? draft.commissionRate
+          : null,
+      commissionHoldDays: draft.commissionHoldDays,
+      landingUrl: draft.landingUrl.trim().isEmpty
+          ? null
+          : draft.landingUrl.trim(),
     );
     campaigns[c.id] = c;
     _changed();
@@ -549,6 +586,35 @@ class FakeMarketplace implements MarketplaceService {
     );
     if ((message ?? '').trim().isNotEmpty) sentMessages.add(message!.trim());
     _changed();
+  }
+
+  final bulkInvites = <(String, List<String>, num?)>[];
+
+  @override
+  Future<int> inviteMany(
+    String campaignId,
+    List<String> creatorIds, {
+    num? offer,
+  }) async {
+    bulkInvites.add((campaignId, creatorIds, offer));
+    var n = 0;
+    for (final id in creatorIds.toSet()) {
+      if (collabs.values.any(
+        (c) => c.campaignId == campaignId && c.creatorId == id,
+      )) {
+        continue;
+      }
+      addCollab(
+        campaignId: campaignId,
+        creator: id,
+        status: CollabStatus.invited,
+        amount: offer,
+        pitch: null,
+      );
+      n++;
+    }
+    _changed();
+    return n;
   }
 
   @override
@@ -952,8 +1018,61 @@ class FakeMarketplace implements MarketplaceService {
           clicks: sales[c.id]?.clicks ?? 0,
           orders: sales[c.id]?.orders ?? 0,
           revenue: sales[c.id]?.revenue ?? 0,
+          commissionRate: c.commissionRate,
+          commissionEarned: commissions[c.id]?.earned ?? 0,
+          commissionPending: commissions[c.id]?.pending ?? 0,
         ),
   ];
+
+  /// Commission per collaboration (test setup).
+  final commissions = <String, CommissionSummary>{};
+
+  @override
+  Future<CommissionSummary> commissionSummary(String collaborationId) async =>
+      commissions[collaborationId] ??
+      CommissionSummary(rate: collabs[collaborationId]?.commissionRate);
+
+  @override
+  Future<void> requestCommission(String collaborationId) async {
+    final c = collabs[collaborationId]!;
+    if (userId != c.creatorId) {
+      throw const MarketplaceFailure(
+        'Only the creator on this deal can request its commission.',
+      );
+    }
+    final s = await commissionSummary(collaborationId);
+    if (!s.canRequest) {
+      throw const MarketplaceFailure(
+        'There’s no earned commission to request yet.',
+      );
+    }
+    final i = Invoice(
+      id: _id('inv'),
+      number: 'INV-2026-0000$_seq',
+      collaborationId: c.id,
+      brandId: c.brandId,
+      creatorId: c.creatorId,
+      gross: s.available,
+      fee: 0,
+      net: s.available,
+      status: InvoiceStatus.pending,
+      campaignTitle: campaigns[c.campaignId]?.title,
+      createdAt: DateTime.now(),
+      isCommission: true,
+    );
+    invoicesById[i.id] = i;
+    commissions[collaborationId] = CommissionSummary(
+      rate: s.rate,
+      holdDays: s.holdDays,
+      confirmedOrders: s.confirmedOrders,
+      confirmedSales: s.confirmedSales,
+      earned: s.earned,
+      pendingOrders: s.pendingOrders,
+      pending: s.pending,
+      invoiced: s.invoiced + s.available,
+    );
+    _changed();
+  }
 
   @override
   Future<void> setDiscountCode(String collaborationId, String? code) async {

@@ -6,6 +6,7 @@ class ReportRow {
   const ReportRow({
     required this.collaboration,
     required this.cost,
+    this.commission = 0,
     required this.invoiced,
     this.post,
     this.sales,
@@ -18,7 +19,11 @@ class ReportRow {
 
   /// What the brand pays: the invoice total (fee + Shor Protection + GST)
   /// once invoiced, otherwise the agreed fee.
+  /// Fixed fee (invoiced total, else agreed) plus [commission].
   final num cost;
+
+  /// Sales commission owed so far, including orders in the return window.
+  final num commission;
   final bool invoiced;
 
   /// Tracked-link clicks and attributed orders.
@@ -71,16 +76,24 @@ class CampaignReport {
       final invoice = invoices
           .where(
             (i) =>
-                i.collaborationId == c.id && i.status != InvoiceStatus.rejected,
+                i.collaborationId == c.id &&
+                !i.isCommission &&
+                i.status != InvoiceStatus.rejected,
           )
           .firstOrNull;
+      final sale = salesByCollab[c.id];
+      // Commission owed so far: earned plus still in the return window.
+      final commission = sale == null
+          ? 0
+          : sale.commissionEarned + sale.commissionPending;
       rows.add(
         ReportRow(
           collaboration: c,
           post: postByCollab[c.id],
-          cost: invoice?.brandTotal ?? c.agreedAmount ?? 0,
+          cost: (invoice?.brandTotal ?? c.agreedAmount ?? 0) + commission,
+          commission: commission,
           invoiced: invoice != null,
-          sales: salesByCollab[c.id],
+          sales: sale,
         ),
       );
     }
@@ -107,6 +120,7 @@ class CampaignReport {
   int get clicks => _sum((r) => r.clicks);
   int get orders => _sum((r) => r.orders);
   num get revenue => rows.fold<num>(0, (s, r) => s + r.revenue);
+  num get commission => rows.fold<num>(0, (s, r) => s + r.commission);
 
   /// Any tracked clicks or orders yet.
   bool get hasSales => clicks > 0 || orders > 0;
@@ -179,6 +193,7 @@ class CampaignReport {
         'Clicks',
         'Orders',
         'Revenue ($currency)',
+        'Commission ($currency)',
         'Cost per order',
         'Return on spend',
       ].join(','),
@@ -202,6 +217,7 @@ class CampaignReport {
           r.clicks,
           r.orders,
           n(r.revenue),
+          n(r.commission),
           n(r.costPerOrder),
           n(r.roas),
         ].join(','),

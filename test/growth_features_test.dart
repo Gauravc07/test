@@ -72,9 +72,11 @@ void main() {
       final lines = report.toCsv().trim().split('\n');
       expect(
         lines.first,
-        endsWith('Clicks,Orders,Revenue (INR),Cost per order,Return on spend'),
+        endsWith(
+          'Clicks,Orders,Revenue (INR),Commission (INR),Cost per order,Return on spend',
+        ),
       );
-      expect(lines.any((l) => l.endsWith(',400,20,30000,500,3')), isTrue);
+      expect(lines.any((l) => l.endsWith(',400,20,30000,0,500,3')), isTrue);
     });
 
     test('no sales yet', () {

@@ -140,6 +140,8 @@ class Campaign {
     this.productDetails,
     this.guidelines,
     this.landingUrl,
+    this.commissionRate,
+    this.commissionHoldDays = 14,
     this.deliverables = const {},
     this.budget = 0,
     this.currency = 'INR',
@@ -183,6 +185,8 @@ class Campaign {
       productDetails: r['product_details'] as String?,
       guidelines: r['guidelines'] as String?,
       landingUrl: r['landing_url'] as String?,
+      commissionRate: _num(r['commission_rate']),
+      commissionHoldDays: _int(r['commission_hold_days']) ?? 14,
       deliverables: _deliverables(r['deliverables']),
       budget: _num(r['budget']) ?? 0,
       currency: r['currency'] as String? ?? 'INR',
@@ -214,6 +218,12 @@ class Campaign {
 
   /// Where creators' tracked links send people.
   final String? landingUrl;
+
+  /// Percent of each attributed order paid to the creator. Null: none.
+  final num? commissionRate;
+
+  /// Days an order must age (returns window) before commission is earned.
+  final int commissionHoldDays;
   final Map<String, int> deliverables;
   final num budget;
   final String currency;
@@ -226,6 +236,7 @@ class Campaign {
   final DateTime? createdAt;
 
   bool get isBarter => compensation == CompensationType.barter;
+  bool get paysCommission => (commissionRate ?? 0) > 0;
   bool get includesProduct => compensation != CompensationType.paid;
   bool get canQuote => acceptsQuotes && !isBarter;
 
@@ -251,8 +262,22 @@ class Campaign {
   String get brandDisplayName =>
       (brandName ?? '').trim().isEmpty ? 'Brand' : brandName!.trim();
 
-  /// "₹12,000", "₹12,000 or your quote", "Quote your price", "Product".
+  /// "₹12,000", "₹12,000 or your quote", "Quote your price", "Product",
+  /// plus "+ 10% of sales" when the campaign pays commission.
   String get compensationLabel {
+    final base = _baseCompensationLabel;
+    if (!paysCommission) return base;
+    final rate = '${formatPercent(commissionRate!)} of sales';
+    // Commission-only: a paid campaign with no fee and no quotes.
+    if (compensation == CompensationType.paid &&
+        payoutPerCreator == null &&
+        !acceptsQuotes) {
+      return rate;
+    }
+    return '$base + $rate';
+  }
+
+  String get _baseCompensationLabel {
     final money = payoutPerCreator == null
         ? null
         : formatMoney(payoutPerCreator, currency: currency);
@@ -281,6 +306,8 @@ class CampaignDraft {
     this.productDetails = '',
     this.guidelines = '',
     this.landingUrl = '',
+    this.commissionRate,
+    this.commissionHoldDays = 14,
     Map<String, int>? deliverables,
     this.budget,
     this.creatorSlots,
@@ -304,6 +331,8 @@ class CampaignDraft {
     productDetails: c.productDetails ?? '',
     guidelines: c.guidelines ?? '',
     landingUrl: c.landingUrl ?? '',
+    commissionRate: c.commissionRate,
+    commissionHoldDays: c.commissionHoldDays,
     deliverables: Map.of(c.deliverables),
     budget: c.budget,
     creatorSlots: c.creatorSlots,
@@ -325,6 +354,8 @@ class CampaignDraft {
   String productDetails;
   String guidelines;
   String landingUrl;
+  num? commissionRate;
+  int commissionHoldDays;
   Map<String, int> deliverables;
   num? budget;
   int? creatorSlots;
@@ -354,6 +385,8 @@ class CampaignDraft {
           : text(productDetails),
       'guidelines': text(guidelines),
       'landing_url': text(landingUrl),
+      'commission_rate': (commissionRate ?? 0) > 0 ? commissionRate : null,
+      'commission_hold_days': commissionHoldDays,
       'deliverables': {
         for (final e in deliverables.entries)
           if (e.value > 0) e.key: e.value,
@@ -500,6 +533,7 @@ class Collaboration {
     required this.status,
     this.pitch,
     this.agreedAmount,
+    this.commissionRate,
     this.currency = 'INR',
     this.deliverables = const {},
     this.dueDate,
@@ -522,6 +556,7 @@ class Collaboration {
       status: fromDb(CollabStatus.values, r['status'], CollabStatus.applied),
       pitch: r['pitch'] as String?,
       agreedAmount: _num(r['agreed_amount']),
+      commissionRate: _num(r['commission_rate']),
       currency: r['currency'] as String? ?? 'INR',
       deliverables: _deliverables(r['deliverables']),
       dueDate: parseDate(r['due_date']),
@@ -541,6 +576,9 @@ class Collaboration {
   final CollabStatus status;
   final String? pitch;
   final num? agreedAmount;
+
+  /// Percent of attributed sales paid on this deal. Null: none.
+  final num? commissionRate;
   final String currency;
   final Map<String, int> deliverables;
   final DateTime? dueDate;
@@ -557,6 +595,7 @@ class Collaboration {
     status: status,
     pitch: pitch,
     agreedAmount: agreedAmount,
+    commissionRate: commissionRate,
     currency: currency,
     deliverables: deliverables,
     dueDate: dueDate,
@@ -647,6 +686,7 @@ class Invoice {
     this.paidAt,
     this.campaignTitle,
     this.counterpartName,
+    this.isCommission = false,
   }) : brandTotal = brandTotal ?? gross + brandFee + brandFeeGst;
 
   factory Invoice.fromRow(Map<String, dynamic> r, {String? counterpartName}) {
@@ -679,8 +719,12 @@ class Invoice {
       counterpartName:
           counterpartName ??
           (brand is Map ? brand['company_name'] as String? : null),
+      isCommission: r['kind'] == 'commission',
     );
   }
+
+  /// A sales-commission invoice rather than the deal's fixed fee.
+  final bool isCommission;
 
   final String id;
   final String number;
@@ -1061,6 +1105,9 @@ class SalesRow {
     this.clicks = 0,
     this.orders = 0,
     this.revenue = 0,
+    this.commissionRate,
+    this.commissionEarned = 0,
+    this.commissionPending = 0,
   });
 
   factory SalesRow.fromRow(Map<String, dynamic> r) => SalesRow(
@@ -1070,6 +1117,9 @@ class SalesRow {
     clicks: _int(r['clicks']) ?? 0,
     orders: _int(r['orders']) ?? 0,
     revenue: _num(r['revenue']) ?? 0,
+    commissionRate: _num(r['commission_rate']),
+    commissionEarned: _num(r['commission_earned']) ?? 0,
+    commissionPending: _num(r['commission_pending']) ?? 0,
   );
 
   final String collaborationId;
@@ -1078,6 +1128,13 @@ class SalesRow {
   final int clicks;
   final int orders;
   final num revenue;
+  final num? commissionRate;
+
+  /// Commission on orders past the return window.
+  final num commissionEarned;
+
+  /// Commission on orders still inside the return window.
+  final num commissionPending;
 
   /// Orders per click, as a percentage.
   double? get conversionRate => clicks == 0 ? null : orders / clicks * 100;
@@ -1455,4 +1512,46 @@ class MarketplaceFailure implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// Commission on one deal: what's earned, what's waiting out the return
+/// window, and what the creator can still request.
+class CommissionSummary {
+  const CommissionSummary({
+    this.rate,
+    this.holdDays = 14,
+    this.confirmedOrders = 0,
+    this.confirmedSales = 0,
+    this.earned = 0,
+    this.pendingOrders = 0,
+    this.pending = 0,
+    this.invoiced = 0,
+    this.available = 0,
+  });
+
+  factory CommissionSummary.fromRow(Map<String, dynamic> r) =>
+      CommissionSummary(
+        rate: _num(r['rate']),
+        holdDays: _int(r['hold_days']) ?? 14,
+        confirmedOrders: _int(r['confirmed_orders']) ?? 0,
+        confirmedSales: _num(r['confirmed_sales']) ?? 0,
+        earned: _num(r['earned']) ?? 0,
+        pendingOrders: _int(r['pending_orders']) ?? 0,
+        pending: _num(r['pending']) ?? 0,
+        invoiced: _num(r['invoiced']) ?? 0,
+        available: _num(r['available']) ?? 0,
+      );
+
+  final num? rate;
+  final int holdDays;
+  final int confirmedOrders;
+  final num confirmedSales;
+  final num earned;
+  final int pendingOrders;
+  final num pending;
+  final num invoiced;
+  final num available;
+
+  bool get hasCommission => (rate ?? 0) > 0;
+  bool get canRequest => available >= 1;
 }

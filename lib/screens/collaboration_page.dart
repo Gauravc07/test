@@ -16,6 +16,7 @@ import '../widgets/safety.dart';
 import 'brand/creator_profile_page.dart';
 import 'chat_page.dart';
 import 'shared/invoice_card.dart' show invoiceBreakdown;
+import 'shared/commission_card.dart';
 import 'shared/sales_tracking_card.dart';
 import 'creator/campaign_detail_page.dart';
 
@@ -268,6 +269,14 @@ class _CollabViewState extends State<_CollabView> {
             isBrand: _isBrand,
             service: widget.service,
           ),
+          if ((_collab.commissionRate ?? 0) > 0) ...[
+            const SizedBox(height: 14),
+            CommissionCard(
+              collaboration: _collab,
+              isBrand: _isBrand,
+              service: widget.service,
+            ),
+          ],
         ],
         const SizedBox(height: 12),
         _terms(),
